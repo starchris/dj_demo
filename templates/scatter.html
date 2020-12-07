@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.0.0-beta.2/echarts.min.js"></script>
+    <style>
+        #chart {
+        width: 80%;
+        height: 840px;
+        }
+
+    </style>
+</head>
+<body>
+<script>{{ jsonScript|safe }}</script>
+<div id="chart"></div>
+<script>
+let chart = echarts.init(document.querySelector('#chart'))
+chart.setOption({
+    dataset: { source: data.filter(d =>d.company_name!='问吧科技'),
+    dimensions: [ 'recent','account_num','pay_ttl','company_name']},
+    xAxis: {scale: true, name: 'rencent'},
+    yAxis: {scale: true, name: 'account_num'},
+    series: [{type: 'scatter',
+        symbolSize: function (data) {
+            return Math.sqrt(data.pay_ttl/200);
+        },
+        emphasis: {
+            label: {
+                show: true,
+                formatter: function (param) {
+                    return param.data.company_name;
+                },
+                position: 'top'
+            }
+        },}],
+    grid: {containLabel: false},
+})
+
+</script>
+
+</body>
+</html>

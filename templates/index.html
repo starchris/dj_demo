@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.0.0-beta.2/echarts.min.js"></script>
+    <style>
+        #chart {
+        width: 80%;
+        height: 840px;
+        }
+    </style>
+</head>
+<body>
+<script>{{ jsonScript|safe }}</script>
+<div id="chart"></div>
+<script>
+let chart = echarts.init(document.querySelector('#chart'))
+chart.setOption({
+    dataset: { source: data, dimensions: ['company_name', 'recent']},
+    xAxis: {type: 'category', axisLabel: {rotate: -45}},
+    yAxis: {type: 'value'},
+    series: [{type: 'bar'}],
+    grid: {containLabel: true},
+})
+</script>
+</body>
+</html>
