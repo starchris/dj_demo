@@ -2,8 +2,6 @@ from django.shortcuts import render
 import pandas as pd
 from pyhive import hive
 
-conn = hive.Connection(host='10.10.76.185', port=10008)
-
 
 def hello(request):
     data = pd.read_csv('data/demo.csv').to_json(orient='records')
@@ -13,6 +11,7 @@ def hello(request):
 
 
 def scatter(request):
+    conn = hive.Connection(host='10.10.76.185', port=10008)
     data = pd.read_sql('''
     select
     t1.account_name,
