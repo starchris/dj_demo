@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.0.0-beta.2/echarts.min.js"></script>
+    <style>
+        #chart {
+        width: 80%;
+        height: 840px;
+        }
+
+    </style>
+</head>
+<body>
+<div>
+    <ol>
+        <li><a href='/'>回到首页</a></li>
+    </ol>
+</div>
+<script>{{ jsonScript|safe }}</script>
+<div id="chart"></div>
+<script>
+let chart = echarts.init(document.querySelector('#chart'))
+chart.setOption({
+    dataset: { source: data,
+               dimensions: [ 'retention','usage_rate','usage_count','function']},
+    xAxis: {scale: true, name: '功能留存率', nameLocation: "center",boundaryGap: true},
+    yAxis: {scale: true, name: '功能使用率'},
+    series: [{
+        type: 'scatter',
+        symbolSize: function (data) {
+            return data.usage_count/400;
+        },
+        emphasis: {
+            label: {
+                show: true,
+                formatter: function (param) {
+                    return param.data.function;
+                },
+                position: 'top'
+            }
+        },
+        label: {
+            formatter: '{@function}',
+            show: true,
+            position: "top",
+            distance: 8
+        }
+        }],
+    grid: {containLabel: false},
+    title: {
+        text: '功能留存矩阵',
+        left: "50%"
+    },
+    tooltip:{
+        trigger: 'item',
+        alwaysShowContent: true,
+        axisPointer: {
+            type : 'cross'
+        },
+        show: true
+    }
+})
+
+</script>
+
+</body>
+</html>
