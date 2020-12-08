@@ -11,6 +11,7 @@ def hello(request):
 
 
 def scatter(request):
+    # data = pd.read_csv('data/demo.csv').to_json(orient='records')
     conn = hive.Connection(host='10.10.76.185', port=10008)
     data = pd.read_sql('''
     select
@@ -22,7 +23,7 @@ def scatter(request):
     row_number() over(partition by t1.account_name order by t1.recent) as recency_num
 from
 (
-    select 
+    select
         account_name,
         company_name,
         DATEDIFF(to_date(from_utc_timestamp(current_timestamp(), 'Asia/Beijing')),pay_time) as recent,
@@ -45,3 +46,10 @@ def bar(req):
     jsonStr = 'data=' + (data)
     context = {'jsonScript': jsonStr}
     return render(req, 'scatter.html', context)
+
+
+def function_scatter(req):
+    data = pd.read_csv('data/dntest.csv').to_json(orient='records')
+    jsonStr = 'data=' + (data)
+    context = {'jsonScript': jsonStr}
+    return render(req, 'function_scatter.html', context)

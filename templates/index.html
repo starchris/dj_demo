@@ -13,6 +13,7 @@
 <div>
     <ol>
         <li><a href="/ss">RFM散点图</a></li>
+        <li><a href="/function_scatter">功能留存矩阵</a></li>
     </ol>
 </div>
 <script>{{ jsonScript|safe }}</script>
@@ -20,11 +21,15 @@
 <script>
 let chart = echarts.init(document.querySelector('#chart'))
 chart.setOption({
-    dataset: { source: data, dimensions: ['company_name', 'recent']},
+    dataset: { source: data, dimensions: ['company_name', 'pay_ttl']},
     xAxis: {type: 'category', axisLabel: {rotate: -45}},
-    yAxis: {type: 'value'},
+    yAxis: {type: 'value', name: 'Rencent最近下单距今/天',},
     series: [{type: 'bar'}],
     grid: {containLabel: true},
+    title: {
+        text: '柱图示例',
+        left: "50%"
+    },
 })
 </script>
 </body>
