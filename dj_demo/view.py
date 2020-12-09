@@ -12,7 +12,7 @@ def hello(request):
 
 def scatter(request):
     # data = pd.read_csv('data/demo.csv').to_json(orient='records')
-    conn = hive.Connection(host='10.10.76.185', port=10008)
+    conn = hive.Connection(host='106.75.22.252', port=10008)
     data = pd.read_sql('''
     select
     t1.account_name,
