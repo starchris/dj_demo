@@ -53,3 +53,9 @@ def function_scatter(req):
     jsonStr = 'data=' + (data)
     context = {'jsonScript': jsonStr}
     return render(req, 'function_scatter.html', context)
+
+def word_cloud(req):
+    data = pd.read_csv('data/dn_search.csv').to_json(orient='records')
+    jsonStr = 'originData=' + (data)
+    context = {'jsonScript': jsonStr}
+    return render(req, 'word_cloud.html', context)

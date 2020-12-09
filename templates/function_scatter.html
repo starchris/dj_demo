@@ -47,8 +47,14 @@ chart.setOption({
             show: true,
             position: "top",
             distance: 8
+        },
+         markLine: {
+          data: [{
+            type: "average"
+          }],
+          silent: false
         }
-        }],
+      }],
     grid: {containLabel: false},
     title: {
         text: '功能留存矩阵',
