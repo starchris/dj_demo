@@ -8,9 +8,10 @@ from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 urlpatterns = [
     url(r'^static/(?P<path>.*)$', serve, {'document_root': settings.STATIC_ROOT}),
     url(r'^$', view.hello),
-    url('ss', view.scatter),
-    url('bar', view.bar),
-    url('function_scatter', view.function_scatter),
-    url('word_cloud', view.word_cloud),
+    url('ss$', view.scatter),
+    url('bar$', view.bar),
+    url('function_scatter$', view.function_scatter),
+    url('word_cloud$', view.word_cloud),
+    url('function_scatter2$', view.function_scatter2),
 ]
 urlpatterns += staticfiles_urlpatterns()

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.0.0-beta.2/echarts.min.js"></script>
+    <style>
+        #chart {
+        width: 80%;
+        height: 840px;
+        }
+
+    </style>
+</head>
+<body>
+<div>
+    <img  src="https://www.growingio.com/vassets/images/home_v3/gio-logo-primary.svg" width="200px" height="30px"/>
+</div>
+<div>
+    <ol>
+        <li><a href='/'>回到首页</a></li>
+    </ol>
+</div>
+<div id="chart"></div>
+<script>
+fetch ("/static/temp.json").then(r=>r.json()).then(res=>{
+    let first_count
+    let data=res.data.filter(d=>d[2]==0).map((d,i)=>{
+        let r = {
+            function_name:d[1],
+            usage_count:d[3],
+            retention:d[7],
+        }
+        if(i == 0) {
+          r.usage_rate = 1
+          first_count = r.usage_count
+        } else {
+          r.usage_rate = r.usage_count/first_count
+        }
+        return r
+    })
+    console.log(data)
+
+    let chart = echarts.init(document.querySelector('#chart'))
+    chart.setOption({
+        dataset: { source: data,
+                   dimensions: [ 'retention','usage_rate','usage_count','function_name']},
+        xAxis: {scale: true, name: '功能留存率', nameLocation: "center",boundaryGap: true},
+        yAxis: {scale: true, name: '功能使用率'},
+        series: [{
+            type: 'scatter',
+            symbolSize: function (data) {
+                return data.usage_count/400;
+            },
+            emphasis: {
+                label: {
+                    show: true,
+                    formatter: function (param) {
+                        return param.data.function_name;
+                    },
+                    position: 'top'
+                }
+            },
+            label: {
+                formatter: '{@function_name}',
+                show: true,
+                position: "top",
+                distance: 8
+            },
+             markLine: {
+              data: [{
+                type: "average"
+              }],
+              silent: false
+            }
+          }],
+        grid: {containLabel: false},
+        title: {
+            text: '功能留存矩阵',
+            left: "50%"
+        },
+        tooltip:{
+            trigger: 'item',
+            alwaysShowContent: true,
+            axisPointer: {
+                type : 'cross'
+            },
+            show: true
+        }
+    })
+
+})
+</script>
+
+</body>
+</html>
