@@ -47,7 +47,6 @@ def bar(req):
     context = {'jsonScript': jsonStr}
     return render(req, 'scatter.html', context)
 
-
 def function_scatter(req):
     data = pd.read_csv('data/dntest.csv').to_json(orient='records')
     jsonStr = 'data=' + (data)
@@ -59,3 +58,7 @@ def word_cloud(req):
     jsonStr = 'originData=' + (data)
     context = {'jsonScript': jsonStr}
     return render(req, 'word_cloud.html', context)
+
+def function_scatter2(req):
+
+    return render(req, 'function_scatter2.html')
