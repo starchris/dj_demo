@@ -71,5 +71,8 @@
       Math.round(Math.random() * 160)
     ].join(',') + ')';
   }
+
+  // 宽度自适应
+  window.addEventListener('resize', e => echarts.init(document.querySelector('#chart')).resize())
 </script>
 </body>

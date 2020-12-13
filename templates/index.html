@@ -35,6 +35,8 @@ chart.setOption({
         left: "50%"
     },
 })
+// 宽度自适应
+window.addEventListener('resize', e => echarts.init(document.querySelector('#chart')).resize())
 </script>
 </body>
 </html>

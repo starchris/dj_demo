@@ -1,94 +1,204 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.0.0-beta.2/echarts.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.0.0-beta.2/echarts.js"></script>
     <style>
         #chart {
-        width: 80%;
-        height: 840px;
+            width: 80%;
+            height: 840px;
+            margin: 0 auto;
+            margin-top: 50px;
         }
 
+        textarea {
+            width: 80%;
+            height: 300px;
+            margin: 0 auto;
+            display: block;
+        }
+
+        button {
+            margin-right: 10%;
+            float: right;
+        }
     </style>
 </head>
+
 <body>
-<div>
-    <img  src="https://www.growingio.com/vassets/images/home_v3/gio-logo-primary.svg" width="200px" height="30px"/>
-</div>
-<div>
-    <ol>
-        <li><a href='/'>回到首页</a></li>
-    </ol>
-</div>
-<div id="chart"></div>
-<script>
-fetch ("/static/temp.json").then(r=>r.json()).then(res=>{
-    let first_count
-    let data=res.data.filter(d=>d[2]==0).map((d,i)=>{
-        let r = {
-            function_name:d[1],
-            usage_count:d[3],
-            retention:d[7],
-        }
-        if(i == 0) {
-          r.usage_rate = 1
-          first_count = r.usage_count
-        } else {
-          r.usage_rate = r.usage_count/first_count
-        }
-        return r
-    })
-    console.log(data)
-
-    let chart = echarts.init(document.querySelector('#chart'))
-    chart.setOption({
-        dataset: { source: data,
-                   dimensions: [ 'retention','usage_rate','usage_count','function_name']},
-        xAxis: {scale: true, name: '功能留存率', nameLocation: "center",boundaryGap: true},
-        yAxis: {scale: true, name: '功能使用率'},
-        series: [{
-            type: 'scatter',
-            symbolSize: function (data) {
-                return data.usage_count/400;
-            },
-            emphasis: {
-                label: {
-                    show: true,
-                    formatter: function (param) {
-                        return param.data.function_name;
-                    },
-                    position: 'top'
+    <div>
+        <img src="https://www.growingio.com/vassets/images/home_v3/gio-logo-primary.svg" width="200px" height="30px" />
+    </div>
+    <div>
+        <ol>
+            <li><a href='/'>回到首页</a></li>
+        </ol>
+    </div>
+    <div>
+        <textarea> </textarea>
+        <button>刷新</button>
+    </div>
+    <div id="chart"></div>
+    <script>
+        // 定义一个render方法，画图
+        function render(res) {
+            // 处理留存图中的response JSON数据，取出次日留存率、功能名称、功能使用人数，且将各功能的使用人数/任意行为人数（d[1]）
+            let first_count, max = 0
+            let filtered = res.filter(d => d[2] == 0)
+            let data = filtered.map((d, i) => {
+                let r = {
+                    function_name: d[1],
+                    usage_count: d[3],
+                    retention: d[7],
                 }
-            },
-            label: {
-                formatter: '{@function_name}',
-                show: true,
-                position: "top",
-                distance: 8
-            },
-             markLine: {
-              data: [{
-                type: "average"
-              }],
-              silent: false
-            }
-          }],
-        grid: {containLabel: false},
-        title: {
-            text: '功能留存矩阵',
-            left: "50%"
-        },
-        tooltip:{
-            trigger: 'item',
-            alwaysShowContent: true,
-            axisPointer: {
-                type : 'cross'
-            },
-            show: true
+                max = max < r.usage_count ? r.usage_count : max;
+                if (i == 0) {
+                    r.usage_rate = 1
+                    first_count = r.usage_count
+                } else {
+                    r.usage_rate = r.usage_count / first_count
+                }
+                return r
+            })
+            let symbolScale = Math.pow(100, 2) / max
+            // echart画图：初始化echart
+            let chart = echarts.init(document.querySelector('#chart'))
+            chart.setOption({
+                dataset: {
+                    source: data.filter(d => d.usage_rate != 1),
+                    dimensions: ['retention', 'usage_rate', 'usage_count', 'function_name']
+                },
+                xAxis: {
+                    scale: true, name: '功能留存率',
+                    nameLocation: "center",
+                    boundaryGap: true,
+                    axisLabel: {
+                        formatter: function (value) {
+                            return Math.floor(value * 100) + '%'
+                        }
+                    }
+                },
+                yAxis: {
+                    scale: true,
+                    name: '功能使用率',
+                    axisLabel: {
+                        formatter: function (value) {
+                            return Math.floor(value * 100) + '%'
+                        }
+                    }
+                },
+                series: [{
+                    type: 'scatter',
+                    symbolSize: function (data, params) {
+                        return Math.sqrt(data.usage_count * symbolScale);
+                    },
+                    emphasis: {
+                        label: {
+                            show: true,
+                            formatter: function (param) {
+                                return param.data.function_name;
+                            },
+                            position: 'top'
+                        }
+                    },
+                    label: {
+                        formatter: '{@function_name}',
+                        show: true,
+                        position: "top",
+                        distance: 8
+                    },
+                    markLine: {
+                        silence: true,
+                        data: [
+                            [
+                                {
+                                    label: {
+                                        show: false
+                                    },
+                                    name: '平均值',
+                                    // 固定起点的 x 像素位置，用于模拟一条指向平均值的水平线
+                                    yAxis: 'min',
+                                    xAxis: 'average'
+                                }, {
+                                    silence: true,
+                                    yAxis: 'max',
+                                    xAxis: 'average'
+                                }
+                            ],
+                            [
+                                {
+                                    label: {
+                                        show: false
+                                    },
+                                    silence: true,
+                                    name: '平均值',
+                                    // 固定起点的 x 像素位置，用于模拟一条指向值的水平线
+                                    yAxis: 'average',
+                                    xAxis: 'min'
+                                }, {
+                                    silence: true,
+                                    yAxis: 'average',
+                                    xAxis: 'max'
+                                }
+                            ]
+                        ]
+                    }
+                }],
+                grid: {
+                    containLabel: false
+                },
+                title: {
+                    text: '功能留存矩阵',
+                    left: "50%"
+                },
+                tooltip: {
+                    trigger: 'item',
+                    alwaysShowContent: true,
+                    formatter: function (params, ticket, callback) {
+                        let { value } = params
+                        let { function_name, retention, usage_count, usage_rate } = value
+                        callback(ticket, `<b>功能</b>: ${function_name}<br/>
+                        <b>留存率</b>: ${Math.floor(retention * 100)}%<br/>
+                        <b>使用人数</b>: ${usage_count}<br/>
+                        <b>使用率</b>: ${Math.floor(usage_rate * 100)}%`)
+                    },
+                    // axisPointer:{
+                    //     type:'line'
+                    // },
+                    show: true
+                }
+            })
+            return filtered
         }
-    })
-
-})
-</script>
+        // 将输入框的数据给到render
+        document.querySelector("button").addEventListener("click", e => {
+            let value = document.querySelector("textarea").value
+            try {
+                let res = JSON.parse(value)
+                data = render(res.data)
+                // 保存数据到url query
+                location.search = new URLSearchParams([
+                    ['res', JSON.stringify(data)]
+                ])
+            } catch (e) {
+                alert("JSON格式错误 " + e.stack)
+            }
+        })
+        // 宽度自适应
+        window.addEventListener('resize', e => echarts.init(document.querySelector('#chart')).resize())
+        // 获取url的query信息
+        let q = new URLSearchParams(location.search).get('res')
+        if (q) {
+            try {
+                render(JSON.parse(q))
+                document.querySelector('textarea').value = q
+            } catch (e) { }
+        } else
+            fetch("/static/temp.json").then(r => r.json()).then(res => {
+                render(res.data)
+            })
+    </script>
 
 </body>
+
 </html>
