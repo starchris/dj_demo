@@ -75,9 +75,9 @@ def function_scatter2(req):
 
 def loop(req):
     # server 端连接
-    conn = hive.Connection(host='10.10.76.185', port=10008)
+    # conn = hive.Connection(host='10.10.76.185', port=10008)
     # 本地 连接
-    # conn = hive.Connection(host='106.75.22.252', port=10008)
+    conn = hive.Connection(host='106.75.22.252', port=10008)
     data = pd.read_sql('''
             select * from lppz.score_file_year_catg_20201215 where sample_ind=1 limit 200''', conn)
 

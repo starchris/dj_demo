@@ -60,6 +60,7 @@
       for (let i = 0; i < cols.length; i++) {
         let colData = colDatas[cols[i]]
         let sampleData = colData[0]
+        if (!sampleData) continue
         let colKeys = Object.keys(sampleData)
         let el = document.createElement('div')
         el.style.width = '400px'
