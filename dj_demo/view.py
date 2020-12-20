@@ -16,7 +16,10 @@ def hello(request):
 
 def scatter(request):
     # data = pd.read_csv('data/demo.csv').to_json(orient='records')
-    conn = hive.Connection(host='106.75.22.252', port=10008)
+    # server 端连接
+    conn = hive.Connection(host='10.10.76.185', port=10008)
+    # 本地连接
+    # conn = hive.Connection(host='106.75.22.252', port=10008)
     data = pd.read_sql('''
         select
         t1.account_name,
@@ -71,7 +74,10 @@ def function_scatter2(req):
 
 
 def loop(req):
-    conn = hive.Connection(host='106.75.22.252', port=10008)
+    # server 端连接
+    conn = hive.Connection(host='10.10.76.185', port=10008)
+    # 本地 连接
+    # conn = hive.Connection(host='106.75.22.252', port=10008)
     data = pd.read_sql('''
             select * from lppz.score_file_year_catg_20201215 where sample_ind=1 limit 200''', conn)
 
