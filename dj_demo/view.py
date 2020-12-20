@@ -1,5 +1,9 @@
+import json
+
+import numpy as np
 from django.shortcuts import render
 import pandas as pd
+
 from pyhive import hive
 
 
@@ -47,18 +51,59 @@ def bar(req):
     context = {'jsonScript': jsonStr}
     return render(req, 'scatter.html', context)
 
+
 def function_scatter(req):
     data = pd.read_csv('data/dntest.csv').to_json(orient='records')
     jsonStr = 'data=' + (data)
     context = {'jsonScript': jsonStr}
     return render(req, 'function_scatter.html', context)
 
+
 def word_cloud(req):
-    data = pd.read_csv('data/dn_search.csv').to_json(orient='records')
+    data = pd.read_csv('data/xbot.csv').to_json(orient='records')
     jsonStr = 'originData=' + (data)
     context = {'jsonScript': jsonStr}
     return render(req, 'word_cloud.html', context)
 
-def function_scatter2(req):
 
+def function_scatter2(req):
     return render(req, 'function_scatter2.html')
+
+
+def loop(req):
+    conn = hive.Connection(host='106.75.22.252', port=10008)
+    data = pd.read_sql('''
+            select * from lppz.score_file_year_catg_20201215 where sample_ind=1 limit 200''', conn)
+
+    decile = data['decile']
+    df = data.drop(['member_no', 'percentile', 'quintile', 'decile', 'ventile', 'quarter'], axis=1)
+    num_cols = df._get_numeric_data().columns
+    cat_cols = df[[i for i in df.columns if i not in num_cols]]
+    cat_cols = cat_cols.apply(condense_category, axis=0)
+    cds = {}
+    for cols in cat_cols:
+        # 聚合后的数据
+        ax = pd.crosstab(index=decile, columns=cat_cols[cols], normalize="index")
+        cds[cols] = ax.to_json(orient='records')
+        
+    num_cols = df.select_dtypes(include=np.number)
+    list(num_cols)
+    quantile_list = [0, .2, .4, .6, .8, 1.]
+    for cols in num_cols:
+        try:
+            num_cols[cols] = pd.qcut(num_cols[cols], q=quantile_list, duplicates='drop')
+        except:
+            continue
+    for cols in num_cols:
+        ax = pd.crosstab(index=decile, columns=num_cols[cols], normalize="index")
+        cds[cols] = ax.to_json(orient='records')
+
+    jsonStr = 'data=' + json.dumps(cds)
+    context = {'jsonScript': jsonStr}
+    return render(req, 'loop.html', context)
+
+
+def condense_category(col, min_freq=0.05, new_name='other'):
+    series = pd.value_counts(col)
+    mask = (series / series.sum()).lt(min_freq)
+    return pd.Series(np.where(col.isin(series[mask].index), new_name, col))

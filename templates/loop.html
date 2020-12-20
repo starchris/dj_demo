@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Title</title>
+  <style>
+  #charts {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  </style>
+</head>
+
+<body>
+  <div>
+    <img src="https://www.growingio.com/vassets/images/home_v3/gio-logo-primary.svg" width="200px" height="30px" />
+  </div>
+  <div>
+    <ol>
+      <li><a href='/'>回到首页</a></li>
+    </ol>
+  </div>
+  <script>{{ jsonScript | safe }}</script>
+  <div id="charts">
+    <!-- charts -->
+  </div>
+  <script src="static/js/echarts.js"></script>
+  <script>
+    function sleep(ms) {
+      return new Promise(res => {
+        setTimeout(() => {
+          res()
+        }, ms);
+      })
+    }
+  </script>
+  <script>
+    console.log('data length', Object.keys(data).length)
+    // 字典
+    let colDatas = {}
+    // 引用python注入的对象 data，获取key
+    Object.keys(data).forEach(k => {
+      try {
+        // jsonString to JSON
+        let r = JSON.parse(data[k])
+        r.forEach((v, i) => {
+          v.decile = i
+        })
+        console.log(k, r)
+        colDatas[k]= r
+      } catch (e) {
+      }
+    })
+    console.log('parsed length', Object.keys(colDatas).length)
+    async function init() {
+      let container = document.querySelector('#charts')
+      // key 组成的数组
+      let cols = Object.keys(colDatas)
+      for (let i = 0; i < cols.length; i++) {
+        let colData = colDatas[cols[i]]
+        let sampleData = colData[0]
+        let colKeys = Object.keys(sampleData)
+        let el = document.createElement('div')
+        el.style.width = '400px'
+        el.style.height = '300px'
+        container.appendChild(el)
+        await sleep(50)
+        let chart = echarts.init(el)
+        let opt = {
+          dataset: {
+            source: colData, 
+            dimensions: ['decile'].concat(colKeys.filter(i=>i!='decile'))
+          },
+          tooltip: {show: true},
+          xAxis: { type: 'category' },
+          yAxis: {},
+          // 遍历所有legend
+          series: colKeys.filter(i=>i!='decile')
+                        .map(c => ({ type: 'bar', stack: 'percentage' })),
+          title:{
+            text: cols[i] +' vs Decile',
+            left: "20%",
+            textStyle:{
+              fontSize:14
+            }
+          },
+          legend:{
+            show:true,
+            top:12,
+            right:0,
+            textStyle:{
+              fontSize:10
+            }
+            
+          },
+          animation:false
+        }
+        chart.setOption(opt)
+        console.log(JSON.stringify(opt, 0, 2))
+      }
+    }
+
+    init()
+  </script>
+</body>

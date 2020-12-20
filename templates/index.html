@@ -1,43 +1,47 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.0.0-beta.2/echarts.min.js"></script>
-    <style>
-        #chart {
-        width: 80%;
-        height: 840px;
-        }
-    </style>
 </head>
 <body>
 <div>
     <img  src="https://www.growingio.com/vassets/images/home_v3/gio-logo-primary.svg" width="200px" height="30px"/>
+    <span><b>D</b>ARPA-<b>LAB</b></span>
 </div>
+<style>
+    b{
+        font-size: 200%;
+        color: #fc6039;
+    }
+    span{
+        vertical-align: middle;
+        line-height: 24px;
+    }
+    div {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        margin-top: 24px;
+        font-family: system-ui;
+        text-align: center;
+    }
+    a {
+        display: block;
+        padding: 12px;
+        border-radius: 12px;
+        background-color: #1b4fe0c2;
+        box-shadow: 0px 1px 7px 0px #8a8a96;
+        margin: 8px;
+        text-decoration: none;
+        color: white;
+    }
+</style>
 <div>
-    <ol>
-        <li><a href="/ss">RFM散点图</a></li>
-        <li><a href="/function_scatter">功能留存矩阵</a></li>
-        <li><a href="/function_scatter2">功能留存矩阵(支持页面直接输入JSON)</a></li>
-        <li><a href="/word_cloud">词云图</a></li>
-    </ol>
+        <a href="/ss">RFM散点图</a>
+        <a href="/function_scatter">功能留存矩阵</a>
+        <a href="/function_scatter2">功能留存矩阵(支持页面直接输入JSON)</a>
+        <a href="/word_cloud">词云图</a>
+        <a href="/loop">Loop(数据查询出图特别慢！！！SQL limit)</a>
 </div>
-<script>{{ jsonScript|safe }}</script>
-<div id="chart"></div>
-<script>
-let chart = echarts.init(document.querySelector('#chart'))
-chart.setOption({
-    dataset: { source: data, dimensions: ['company_name', 'pay_ttl']},
-    xAxis: {type: 'category', axisLabel: {rotate: -45}},
-    yAxis: {type: 'value', name: 'Rencent最近下单距今/天',},
-    series: [{type: 'bar'}],
-    grid: {containLabel: true},
-    title: {
-        text: '柱图示例',
-        left: "50%"
-    },
-})
-// 宽度自适应
-window.addEventListener('resize', e => echarts.init(document.querySelector('#chart')).resize())
-</script>
+
 </body>
 </html>
