@@ -105,6 +105,10 @@ def loop(req):
         cds[cols] = ax.to_json(orient='records')
 
     jsonStr = 'data=' + json.dumps(cds)
+    # 存储jsonStr
+    # with open('test_decile.json') as writer:
+    #     writer.write(jsonStr)
+
     context = {'jsonScript': jsonStr}
     return render(req, 'loop.html', context)
 
