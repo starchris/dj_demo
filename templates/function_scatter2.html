@@ -69,7 +69,11 @@
                     dimensions: ['retention', 'usage_rate', 'usage_count', 'function_name']
                 },
                 xAxis: {
-                    scale: true, name: '功能留存率',
+                    scale: true,
+                    name: '留存率',
+                    nameTextStyle: {
+                      fontSize: 14
+                    },
                     nameLocation: "center",
                     boundaryGap: true,
                     axisLabel: {
@@ -80,7 +84,10 @@
                 },
                 yAxis: {
                     scale: true,
-                    name: '功能使用率',
+                    name: '渗透率',
+                    nameTextStyle: {
+                      fontSize: 15
+                    },
                     axisLabel: {
                         formatter: function (value) {
                             return Math.floor(value * 100) + '%'
@@ -148,7 +155,7 @@
                     containLabel: false
                 },
                 title: {
-                    text: '功能留存矩阵',
+                    text: '客户留存分析',
                     left: "50%"
                 },
                 tooltip: {

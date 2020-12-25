@@ -14,5 +14,6 @@ urlpatterns = [
     url('word_cloud$', view.word_cloud),
     url('function_scatter2$', view.function_scatter2),
     url('loop', view.loop),
+    url('t_lag', view.t_lag),
 ]
 urlpatterns += staticfiles_urlpatterns()
