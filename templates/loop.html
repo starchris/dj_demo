@@ -9,6 +9,9 @@
     display: flex;
     flex-wrap: wrap;
   }
+  h3 {
+    text-align: center;
+  }
   </style>
 </head>
 
@@ -16,7 +19,7 @@
   <div>
     <img src="https://www.growingio.com/vassets/images/home_v3/gio-logo-primary.svg" width="200px" height="30px" />
   </div>
-  <div>
+  <div id="title-bar">
     <ol>
       <li><a href='/'>回到首页</a></li>
     </ol>
@@ -110,6 +113,12 @@
         open(`./${t}`)
       })
     } else {
+      if(/\/loop_tables/.test(location.pathname)) {
+        let tbn = location.pathname.split('/').pop()
+        let tbv = document.createElement('h3')
+        tbv.textContent = tbn
+        document.querySelector('#title-bar').appendChild(tbv)
+      }
     init()
     }
   </script>
