@@ -85,7 +85,7 @@ def loop(req):
     # 本地 连接
     # conn = hive.Connection(host='106.75.22.252', port=10008)
     data = pd.read_sql('''
-            select * from lppz.score_file_year_catg_20201215 where sample_ind=1 limit 200''', conn)
+            select * from lppz.score_file_year_no_oot_20201227giftbox where sample_ind=1''', conn)
 
     decile = data['decile']
     df = data.drop(['member_no', 'percentile', 'quintile', 'decile', 'ventile', 'quarter'], axis=1)
