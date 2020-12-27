@@ -25,7 +25,7 @@
   <div id="charts">
     <!-- charts -->
   </div>
-  <script src="static/js/echarts.js"></script>
+  <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.0.0-beta.2/echarts.js"></script>
   <script>
     function sleep(ms) {
       return new Promise(res => {
@@ -36,6 +36,7 @@
     }
   </script>
   <script>
+    async function init() {
     console.log('data length', Object.keys(data).length)
     // 字典
     let colDatas = {}
@@ -53,7 +54,6 @@
       }
     })
     console.log('parsed length', Object.keys(colDatas).length)
-    async function init() {
       let container = document.querySelector('#charts')
       // key 组成的数组
       let cols = Object.keys(colDatas)
@@ -101,7 +101,16 @@
         console.log(JSON.stringify(opt, 0, 2))
       }
     }
-
+    if (data == null) {
+      let div = document.createElement('div')
+      div.innerHTML = `<input id='table_name' /> <button id='input_table'>查询数据</button>`
+      document.body.appendChild(div)
+      div.querySelector('button').addEventListener('click', e => {
+        let t = div.querySelector('#table_name').value.trim()
+        open(`./${t}`)
+      })
+    } else {
     init()
+    }
   </script>
 </body>

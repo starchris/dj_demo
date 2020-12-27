@@ -219,3 +219,46 @@ order by 1''', conn).to_json(orient='records')
     jsonStr = 'data=' + (data)
     context = {'jsonScript': jsonStr}
     return render(request, 't_lag.html', context)
+
+
+def loop_tables(req, table_name):
+    if not table_name or table_name == '/':
+        jsonStr = 'data=null'
+        context = {'jsonScript': jsonStr}
+        return render(req, 'loop.html', context)
+    # server 端连接
+    conn = hive.Connection(host='10.10.76.185', port=10008)
+    # 本地 连接
+    # conn = hive.Connection(host='106.75.22.252', port=10008)
+    data = pd.read_sql("select * from {} where sample_ind=1".format(table_name), conn)
+
+    decile = data['decile']
+    df = data.drop(['member_no', 'percentile', 'quintile', 'decile', 'ventile', 'quarter'], axis=1)
+    num_cols = df._get_numeric_data().columns
+    cat_cols = df[[i for i in df.columns if i not in num_cols]]
+    cat_cols = cat_cols.apply(condense_category, axis=0)
+    cds = {}
+    for cols in cat_cols:
+        # 聚合后的数据
+        ax = pd.crosstab(index=decile, columns=cat_cols[cols], normalize="index")
+        cds[cols] = ax.to_json(orient='records')
+
+    num_cols = df.select_dtypes(include=np.number)
+    list(num_cols)
+    quantile_list = [0, .2, .4, .6, .8, 1.]
+    for cols in num_cols:
+        try:
+            num_cols[cols] = pd.qcut(num_cols[cols], q=quantile_list, duplicates='drop')
+        except:
+            continue
+    for cols in num_cols:
+        ax = pd.crosstab(index=decile, columns=num_cols[cols], normalize="index")
+        cds[cols] = ax.to_json(orient='records')
+
+    jsonStr = 'data=' + json.dumps(cds)
+    # 存储jsonStr
+    # with open('test_decile.json') as writer:
+    #     writer.write(jsonStr)
+
+    context = {'jsonScript': jsonStr}
+    return render(req, 'loop.html', context)
