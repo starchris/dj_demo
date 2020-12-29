@@ -104,7 +104,7 @@ def loop(req):
     # 本地 连接 - clickhouse
     start = time.time()
     # client = Client(host='106.75.2.168', port='9001', user='default', password='')
-    sql = 'select * from lppz.score_file_year_no_oot_20201227giftbox where sample_ind=1 limit 10000'
+    sql = 'select * from lppz.score_file_year_no_oot_20201227giftbox where sample_ind=1'
     value, columns = client.execute(sql, columnar=True, with_column_types=True)
     sqlTime = time.time() - start
     start = time.time()
@@ -170,7 +170,7 @@ def loop_tables(req, table_name):
     # 本地 连接 - clickhouse
     start = time.time()
     # client = Client(host='106.75.2.168', port='9001', user='default', password='')
-    sql = "select * from {} where sample_ind=1 limit 10000".format(table_name)
+    sql = "select * from {} where sample_ind=1".format(table_name)
     value, columns = client.execute(sql, columnar=True, with_column_types=True)
     sqlTime = time.time() - start
     start = time.time()
