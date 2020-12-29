@@ -15,6 +15,8 @@ urlpatterns = [
     url('^function_scatter2$', view.function_scatter2),
     url('^loop$', view.loop),
     url('^loop_tables/(?P<table_name>.*)$', view.loop_tables),
+    url('^loop_tables_carbon/(?P<table_name>.*)$', view.loop_tables_carbon),
+    url('^loop_tables_clickhouse/(?P<table_name>.*)$', view.loop_tables_clickhouse),
     url('^t_lag$', view.t_lag),
 ]
 urlpatterns += staticfiles_urlpatterns()

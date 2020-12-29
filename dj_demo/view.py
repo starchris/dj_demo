@@ -103,7 +103,6 @@ def loop(req):
     #         select * from lppz.score_file_year_no_oot_20201227giftbox where sample_ind=1''', conn)
     # 本地 连接 - clickhouse
     start = time.time()
-    # client = Client(host='106.75.2.168', port='9001', user='default', password='')
     sql = 'select * from lppz.score_file_year_no_oot_20201227giftbox where sample_ind=1'
     value, columns = client.execute(sql, columnar=True, with_column_types=True)
     sqlTime = time.time() - start
@@ -151,32 +150,46 @@ def condense_category(col, min_freq=0.05, new_name='other'):
     return pd.Series(np.where(col.isin(series[mask].index), new_name, col))
 
 
-def loop_tables(req, table_name):
+def loop_tables_clickhouse(req, table_name):
+    return loop_tables(req, table_name, False)
+
+
+def loop_tables_carbon(req, table_name):
+    return loop_tables(req, table_name, True)
+
+# lppz.score_file_year_no_oot_20201227giftbox
+def loop_tables(req, table_name, use_carbon=False):
     if not table_name or table_name == '/':
         jsonStr = 'data=null'
         context = {'jsonScript': jsonStr}
         return render(req, 'loop.html', context)
-    if isMac():
-        client = Client(host='106.75.2.168', port='9001', user='default', password='')
+    start = time.time()
+    if not use_carbon:
+        if isMac():
+            client = Client(host='106.75.2.168', port='9001', user='default', password='')
+            sql = "select * from {} where sample_ind=1 limit 1000".format(table_name)
+        else:
+            client = Client(host='10.10.149.76', port='9001', user='default', password='')
+            sql = "select * from {} where sample_ind=1".format(table_name)
+
+        value, columns = client.execute(sql, columnar=True, with_column_types=True)
+        sqlTime = time.time() - start
+        start = time.time()
+        data = pd.DataFrame({re.sub(r'\W', '_', col[0]): d for d, col in zip(value, columns)})
+        pdTime = time.time() - start
+        start = time.time()
     else:
-        client = Client(host='10.10.149.76', port='9001', user='default', password='')
-    # server 端连接 - carbon
-    # conn = hive.Connection(host='10.10.76.185', port=10008)
-    # server 端连接 - clickhouse
-    # client = Client(host='10.10.149.76',port='9001',user='default',password='')
-    # 本地 连接 - carbon
-    # conn = hive.Connection(host='106.75.22.252', port=10008)
-    # data = pd.read_sql("select * from {} where sample_ind=1".format(table_name), conn)
-    # 本地 连接 - clickhouse
-    start = time.time()
-    # client = Client(host='106.75.2.168', port='9001', user='default', password='')
-    sql = "select * from {} where sample_ind=1".format(table_name)
-    value, columns = client.execute(sql, columnar=True, with_column_types=True)
-    sqlTime = time.time() - start
-    start = time.time()
-    data = pd.DataFrame({re.sub(r'\W', '_', col[0]): d for d, col in zip(value, columns)})
-    pdTime = time.time() - start
-    start = time.time()
+        # 本地连接
+        if isMac():
+            conn = hive.Connection(host='106.75.22.252', port=10008)
+            data = pd.read_sql("select * from {} where sample_ind=1 limit 1000".format(table_name), conn)
+        # server连接
+        else:
+            conn = hive.Connection(host='10.10.76.185', port=10008)
+            data = pd.read_sql("select * from {} where sample_ind=1".format(table_name), conn)
+        sqlTime = time.time() - start
+        start = time.time()
+        pdTime = -1
 
     decile = data['decile']
     df = data.drop(['member_no', 'percentile', 'quintile', 'decile', 'ventile', 'quarter'], axis=1)
@@ -209,7 +222,6 @@ def loop_tables(req, table_name):
 
     context = {'jsonScript': jsonStr}
     return render(req, 'loop.html', context)
-
 
 def t_lag(request):
     # data = pd.read_csv('data/demo.csv').to_json(orient='records')

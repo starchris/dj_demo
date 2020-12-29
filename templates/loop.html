@@ -3,29 +3,35 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>Title</title>
+  <title>DARPA-Loop</title>
   <style>
-  #charts {
-    display: flex;
-    flex-wrap: wrap;
-  }
-  h3 {
-    text-align: center;
-  }
-  .perf {
-    float: right;
-    position: relative;
-  }
-  .perf table {
-    border-collapse: collapse;
-    text-align: center;
-  }
-  th {
-    background: lightgray;
-  }
-  th, td {
-    border: 1px solid gray;
-  }
+    #charts {
+      display: flex;
+      flex-wrap: wrap;
+    }
+
+    h3 {
+      text-align: center;
+    }
+
+    .perf {
+      float: right;
+      position: relative;
+    }
+
+    .perf table {
+      border-collapse: collapse;
+      text-align: center;
+    }
+
+    th {
+      background: lightgray;
+    }
+
+    th,
+    td {
+      border: 1px solid gray;
+    }
   </style>
 </head>
 
@@ -55,23 +61,23 @@
   </script>
   <script>
     async function init() {
-    console.log('data length', Object.keys(data).length)
-    // 字典
-    let colDatas = {}
-    // 引用python注入的对象 data，获取key
-    Object.keys(data).forEach(k => {
-      try {
-        // jsonString to JSON
-        let r = JSON.parse(data[k])
-        r.forEach((v, i) => {
-          v.decile = i
-        })
-        console.log(k, r)
-        colDatas[k]= r
-      } catch (e) {
-      }
-    })
-    console.log('parsed length', Object.keys(colDatas).length)
+      console.log('data length', Object.keys(data).length)
+      // 字典
+      let colDatas = {}
+      // 引用python注入的对象 data，获取key
+      Object.keys(data).forEach(k => {
+        try {
+          // jsonString to JSON
+          let r = JSON.parse(data[k])
+          r.forEach((v, i) => {
+            v.decile = i
+          })
+          console.log(k, r)
+          colDatas[k] = r
+        } catch (e) {
+        }
+      })
+      console.log('parsed length', Object.keys(colDatas).length)
       let container = document.querySelector('#charts')
       // key 组成的数组
       let cols = Object.keys(colDatas)
@@ -88,32 +94,32 @@
         let chart = echarts.init(el)
         let opt = {
           dataset: {
-            source: colData, 
-            dimensions: ['decile'].concat(colKeys.filter(i=>i!='decile'))
+            source: colData,
+            dimensions: ['decile'].concat(colKeys.filter(i => i != 'decile'))
           },
-          tooltip: {show: true},
+          tooltip: { show: true },
           xAxis: { type: 'category' },
           yAxis: {},
           // 遍历所有legend
-          series: colKeys.filter(i=>i!='decile')
-                        .map(c => ({ type: 'bar', stack: 'percentage' })),
-          title:{
-            text: cols[i] +' vs Decile',
+          series: colKeys.filter(i => i != 'decile')
+            .map(c => ({ type: 'bar', stack: 'percentage' })),
+          title: {
+            text: cols[i] + ' vs Decile',
             left: "20%",
-            textStyle:{
-              fontSize:14
+            textStyle: {
+              fontSize: 14
             }
           },
-          legend:{
-            show:true,
-            top:12,
-            right:0,
-            textStyle:{
-              fontSize:10
+          legend: {
+            show: true,
+            top: 12,
+            right: 0,
+            textStyle: {
+              fontSize: 10
             }
-            
+
           },
-          animation:false
+          animation: false
         }
         chart.setOption(opt)
         console.log(JSON.stringify(opt, 0, 2))
@@ -121,24 +127,41 @@
     }
     if (data == null) {
       let div = document.createElement('div')
-      div.innerHTML = `<input id='table_name' /> <button id='input_table'>查询数据</button>`
+      div.innerHTML = `
+      <form>
+        <div>ClickHouse数据源：<input name='ch_name' /> <button id='loop_tables_clickhouse'>查询数据</button></div>
+        <div>Carbon数据源：<input name='cb_name' /> <button id='loop_tables_carbon'>查询数据</button></div>
+      </form>
+      `
       document.body.appendChild(div)
-      div.querySelector('button').addEventListener('click', e => {
-        let t = div.querySelector('#table_name').value.trim()
-        open(`./${t}`)
+      let ids = ['loop_tables_carbon', 'loop_tables_clickhouse']
+      ids.forEach(id => {
+        document.querySelector(`button#${id}`).addEventListener('click', e => {
+          e.preventDefault()
+          let t = e.target.parentNode.querySelector('input').value.trim()
+          open(`/${id}/${t}`)
+        })
       })
     } else {
-      if(/\/loop_tables/.test(location.pathname)) {
+      if (/\/loop_tables/.test(location.pathname)) {
         let tbn = location.pathname.split('/').pop()
         let tbv = document.createElement('h3')
         tbv.textContent = tbn
         document.querySelector('#title-bar').appendChild(tbv)
       }
-    init()
-    document.querySelector('.perf').innerHTML = `
+      init()
+      document.querySelector('.perf').innerHTML = `
     <table>
-      <tr><th>sql</th><th>pd</th><th>process</th></tr>
-      <tr><td>${sqlTime.toFixed(2)}</td><td>${pdTime.toFixed(2)}</td><td>${chartTime.toFixed(2)}</td></tr>
+      <tr>
+        <th>sql</th>
+        <th>pd</th>
+        <th>process</th>
+      </tr>
+      <tr>
+        <td>${sqlTime.toFixed(2)}</td>
+        <td>${pdTime.toFixed(2)}</td>
+        <td>${chartTime.toFixed(2)}</td>
+      </tr>
     </table>
     `
     }
