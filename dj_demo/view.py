@@ -5,6 +5,15 @@ from django.shortcuts import render
 import pandas as pd
 
 from pyhive import hive
+from clickhouse_driver import Client
+import re
+import time
+import platform
+from pandas.core.frame import DataFrame
+
+
+def isMac():
+    return platform.system() == "Darwin"
 
 
 def hello(request):
@@ -80,12 +89,28 @@ def function_scatter2(req):
 
 
 def loop(req):
-    # server 端连接
-    conn = hive.Connection(host='10.10.76.185', port=10008)
-    # 本地 连接
+    if isMac():
+        client = Client(host='106.75.2.168', port='9001', user='default', password='')
+    else:
+        client = Client(host='10.10.149.76', port='9001', user='default', password='')
+    # server 端连接 - carbon
+    # conn = hive.Connection(host='10.10.76.185', port=10008)
+    # server 连接 - clickhouse
+    # client = Client(host='10.10.149.76', port='9001', user='default', password='')
+    # 本地连接
     # conn = hive.Connection(host='106.75.22.252', port=10008)
-    data = pd.read_sql('''
-            select * from lppz.score_file_year_no_oot_20201227giftbox where sample_ind=1''', conn)
+    # data = pd.read_sql('''
+    #         select * from lppz.score_file_year_no_oot_20201227giftbox where sample_ind=1''', conn)
+    # 本地 连接 - clickhouse
+    start = time.time()
+    # client = Client(host='106.75.2.168', port='9001', user='default', password='')
+    sql = 'select * from lppz.score_file_year_no_oot_20201227giftbox where sample_ind=1 limit 10000'
+    value, columns = client.execute(sql, columnar=True, with_column_types=True)
+    sqlTime = time.time() - start
+    start = time.time()
+    data = pd.DataFrame({re.sub(r'\W', '_', col[0]): d for d, col in zip(value, columns)})
+    pdTime = time.time() - start
+    start = time.time()
 
     decile = data['decile']
     df = data.drop(['member_no', 'percentile', 'quintile', 'decile', 'ventile', 'quarter'], axis=1)
@@ -109,8 +134,9 @@ def loop(req):
     for cols in num_cols:
         ax = pd.crosstab(index=decile, columns=num_cols[cols], normalize="index")
         cds[cols] = ax.to_json(orient='records')
+    chartTime = time.time() - start
 
-    jsonStr = 'data=' + json.dumps(cds)
+    jsonStr = 'data=' + json.dumps(cds) + ";sqlTime={};pdTime={};chartTime={};".format(sqlTime, pdTime, chartTime)
     # 存储jsonStr
     # with open('test_decile.json') as writer:
     #     writer.write(jsonStr)
@@ -118,12 +144,71 @@ def loop(req):
     context = {'jsonScript': jsonStr}
     return render(req, 'loop.html', context)
 
-
+# loop category 类别的数据处理
 def condense_category(col, min_freq=0.05, new_name='other'):
     series = pd.value_counts(col)
     mask = (series / series.sum()).lt(min_freq)
     return pd.Series(np.where(col.isin(series[mask].index), new_name, col))
 
+
+def loop_tables(req, table_name):
+    if not table_name or table_name == '/':
+        jsonStr = 'data=null'
+        context = {'jsonScript': jsonStr}
+        return render(req, 'loop.html', context)
+    if isMac():
+        client = Client(host='106.75.2.168', port='9001', user='default', password='')
+    else:
+        client = Client(host='10.10.149.76', port='9001', user='default', password='')
+    # server 端连接 - carbon
+    # conn = hive.Connection(host='10.10.76.185', port=10008)
+    # server 端连接 - clickhouse
+    # client = Client(host='10.10.149.76',port='9001',user='default',password='')
+    # 本地 连接 - carbon
+    # conn = hive.Connection(host='106.75.22.252', port=10008)
+    # data = pd.read_sql("select * from {} where sample_ind=1".format(table_name), conn)
+    # 本地 连接 - clickhouse
+    start = time.time()
+    # client = Client(host='106.75.2.168', port='9001', user='default', password='')
+    sql = "select * from {} where sample_ind=1 limit 10000".format(table_name)
+    value, columns = client.execute(sql, columnar=True, with_column_types=True)
+    sqlTime = time.time() - start
+    start = time.time()
+    data = pd.DataFrame({re.sub(r'\W', '_', col[0]): d for d, col in zip(value, columns)})
+    pdTime = time.time() - start
+    start = time.time()
+
+    decile = data['decile']
+    df = data.drop(['member_no', 'percentile', 'quintile', 'decile', 'ventile', 'quarter'], axis=1)
+    num_cols = df._get_numeric_data().columns
+    cat_cols = df[[i for i in df.columns if i not in num_cols]]
+    cat_cols = cat_cols.apply(condense_category, axis=0)
+    cds = {}
+    for cols in cat_cols:
+        # 聚合后的数据
+        ax = pd.crosstab(index=decile, columns=cat_cols[cols], normalize="index")
+        cds[cols] = ax.to_json(orient='records')
+
+    num_cols = df.select_dtypes(include=np.number)
+    list(num_cols)
+    quantile_list = [0, .2, .4, .6, .8, 1.]
+    for cols in num_cols:
+        try:
+            num_cols[cols] = pd.qcut(num_cols[cols], q=quantile_list, duplicates='drop')
+        except:
+            continue
+    for cols in num_cols:
+        ax = pd.crosstab(index=decile, columns=num_cols[cols], normalize="index")
+        cds[cols] = ax.to_json(orient='records')
+    chartTime = time.time() - start
+
+    jsonStr = 'data=' + json.dumps(cds) + ";sqlTime={};pdTime={};chartTime={};".format(sqlTime, pdTime, chartTime)
+    # 存储jsonStr
+    # with open('test_decile.json') as writer:
+    #     writer.write(jsonStr)
+
+    context = {'jsonScript': jsonStr}
+    return render(req, 'loop.html', context)
 
 
 def t_lag(request):
@@ -219,46 +304,3 @@ order by 1''', conn).to_json(orient='records')
     jsonStr = 'data=' + (data)
     context = {'jsonScript': jsonStr}
     return render(request, 't_lag.html', context)
-
-
-def loop_tables(req, table_name):
-    if not table_name or table_name == '/':
-        jsonStr = 'data=null'
-        context = {'jsonScript': jsonStr}
-        return render(req, 'loop.html', context)
-    # server 端连接
-    conn = hive.Connection(host='10.10.76.185', port=10008)
-    # 本地 连接
-    # conn = hive.Connection(host='106.75.22.252', port=10008)
-    data = pd.read_sql("select * from {} where sample_ind=1".format(table_name), conn)
-
-    decile = data['decile']
-    df = data.drop(['member_no', 'percentile', 'quintile', 'decile', 'ventile', 'quarter'], axis=1)
-    num_cols = df._get_numeric_data().columns
-    cat_cols = df[[i for i in df.columns if i not in num_cols]]
-    cat_cols = cat_cols.apply(condense_category, axis=0)
-    cds = {}
-    for cols in cat_cols:
-        # 聚合后的数据
-        ax = pd.crosstab(index=decile, columns=cat_cols[cols], normalize="index")
-        cds[cols] = ax.to_json(orient='records')
-
-    num_cols = df.select_dtypes(include=np.number)
-    list(num_cols)
-    quantile_list = [0, .2, .4, .6, .8, 1.]
-    for cols in num_cols:
-        try:
-            num_cols[cols] = pd.qcut(num_cols[cols], q=quantile_list, duplicates='drop')
-        except:
-            continue
-    for cols in num_cols:
-        ax = pd.crosstab(index=decile, columns=num_cols[cols], normalize="index")
-        cds[cols] = ax.to_json(orient='records')
-
-    jsonStr = 'data=' + json.dumps(cds)
-    # 存储jsonStr
-    # with open('test_decile.json') as writer:
-    #     writer.write(jsonStr)
-
-    context = {'jsonScript': jsonStr}
-    return render(req, 'loop.html', context)

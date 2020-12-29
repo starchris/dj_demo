@@ -12,11 +12,26 @@
   h3 {
     text-align: center;
   }
+  .perf {
+    float: right;
+    position: relative;
+  }
+  .perf table {
+    border-collapse: collapse;
+    text-align: center;
+  }
+  th {
+    background: lightgray;
+  }
+  th, td {
+    border: 1px solid gray;
+  }
   </style>
 </head>
 
 <body>
   <div>
+    <div class="perf"></div>
     <img src="https://www.growingio.com/vassets/images/home_v3/gio-logo-primary.svg" width="200px" height="30px" />
   </div>
   <div id="title-bar">
@@ -120,6 +135,12 @@
         document.querySelector('#title-bar').appendChild(tbv)
       }
     init()
+    document.querySelector('.perf').innerHTML = `
+    <table>
+      <tr><th>sql</th><th>pd</th><th>process</th></tr>
+      <tr><td>${sqlTime.toFixed(2)}</td><td>${pdTime.toFixed(2)}</td><td>${chartTime.toFixed(2)}</td></tr>
+    </table>
+    `
     }
   </script>
 </body>
