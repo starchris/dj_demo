@@ -24,7 +24,6 @@ SECRET_KEY = 'v^frhw95gjxl)h_ll1&he1t&5qzp+zp)s52^#zzew$#ieh8+^&'
 DEBUG = True
 
 ALLOWED_HOSTS = ['*']
-
 X_FRAME_OPTIONS = 'ALLOW-FROM'
 # Application definition
 
