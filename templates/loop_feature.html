@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>DARPA-Loop</title>
+  <style>
+      input {
+          width: 30em;
+      }
+    #charts {
+      display: flex;
+      flex-wrap: wrap;
+    }
+
+    h3 {
+      text-align: center;
+    }
+
+    .perf {
+      float: right;
+      position: relative;
+    }
+
+    .perf table {
+      border-collapse: collapse;
+      text-align: center;
+    }
+
+    th {
+      background: lightgray;
+    }
+
+    th,
+    td {
+      border: 1px solid gray;
+    }
+  </style>
+</head>
+
+<body>
+  <div>
+    <div class="perf"></div>
+    <img src="https://www.growingio.com/vassets/images/home_v3/gio-logo-primary.svg" width="200px" height="30px" />
+  </div>
+  <div id="title-bar">
+    <ol>
+      <li><a href='/'>回到首页</a></li>
+    </ol>
+  </div>
+  <script>{{ jsonScript | safe }}</script>
+  <div id="charts">
+    <!-- charts -->
+  </div>
+  <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.0.0-beta.2/echarts.js"></script>
+  <script>
+    function sleep(ms) {
+      return new Promise(res => {
+        setTimeout(() => {
+          res()
+        }, ms);
+      })
+    }
+  </script>
+  <script>
+    async function init() {
+      let container = document.querySelector('#charts')
+      // key 组成的数组
+      for (let i = 0; i < data.length; i++) {
+        if (!data[i]) continue
+        let {name, str} = data[i]
+        let source = JSON.parse(str)
+        if (source.length == 1) continue
+        let el = document.createElement('div')
+        el.style.width = '400px'
+        el.style.height = '300px'
+        container.appendChild(el)
+        let chart = echarts.init(el)
+        let opt = {
+          dataset: {source, dimensions: [name, 'count']},
+          tooltip: { show: true },
+          grid: {
+                containLabel: true
+            },
+          xAxis: { type: 'category'},
+          yAxis: {},
+          // 遍历所有legend
+          series: [{type: 'bar', large: true}],
+          dataZoom: [{
+                type: 'slider',
+                show: true,
+                xAxisIndex: [0]
+            }],
+          title: {
+            text: name,
+            left: "20%",
+            textStyle: {
+              fontSize: 14
+            }
+          },
+          animation: false
+        }
+        chart.setOption(opt)
+        await sleep(50)
+      }
+    }
+    if (data == null) {
+      let div = document.createElement('div')
+      div.innerHTML = `
+      <form action='#'>
+        <div>ClickHouse数据源：<input name='ch_name' /> <button id='loop_tables_clickhouse'>查询数据</button></div>
+        <div>Carbon数据源：<input name='cb_name' /> <button id='loop_feature'>查询数据</button></div>
+      </form>
+      `
+      document.body.appendChild(div)
+      let ids = ['loop_feature', 'loop_tables_clickhouse']
+      ids.forEach(id => {
+        document.querySelector(`button#${id}`).addEventListener('click', e => {
+          let t = e.target.parentNode.querySelector('input').value.trim()
+          open(`/${id}/${t}`)
+        })
+      })
+    } else {
+      if (/\/loop_tables/.test(location.pathname)) {
+        let tbn = location.pathname.split('/').pop()
+        let tbv = document.createElement('h3')
+        tbv.textContent = tbn
+        document.querySelector('#title-bar').appendChild(tbv)
+      }
+      init()
+    //   document.querySelector('.perf').innerHTML = `
+    // <table>
+    //   <tr>
+    //     <th>sql</th>
+    //     <th>pd</th>
+    //     <th>process</th>
+    //   </tr>
+    //   <tr>
+    //     <td>${sqlTime.toFixed(2)}</td>
+    //     <td>${pdTime.toFixed(2)}</td>
+    //     <td>${chartTime.toFixed(2)}</td>
+    //   </tr>
+    // </table>
+    // `
+    }
+  </script>
+</body>

@@ -1,4 +1,5 @@
 import json
+import multiprocessing
 
 import numpy as np
 from django.shortcuts import render
@@ -26,9 +27,9 @@ def hello(request):
 def scatter(request):
     # data = pd.read_csv('data/demo.csv').to_json(orient='records')
     # server 端连接
-    conn = hive.Connection(host='10.10.76.185', port=10008)
+    # conn = hive.Connection(host='10.10.76.185', port=10008)
     # 本地连接
-    # conn = hive.Connection(host='106.75.22.252', port=10008)
+    conn = hive.Connection(host='106.75.22.252', port=10008)
     data = pd.read_sql('''
         select
         t1.account_name,
@@ -121,7 +122,7 @@ def loop(req):
         # 聚合后的数据
         ax = pd.crosstab(index=decile, columns=cat_cols[cols], normalize="index")
         cds[cols] = ax.to_json(orient='records')
-        
+
     num_cols = df.select_dtypes(include=np.number)
     list(num_cols)
     quantile_list = [0, .2, .4, .6, .8, 1.]
@@ -143,6 +144,7 @@ def loop(req):
     context = {'jsonScript': jsonStr}
     return render(req, 'loop.html', context)
 
+
 # loop category 类别的数据处理
 def condense_category(col, min_freq=0.05, new_name='other'):
     series = pd.value_counts(col)
@@ -156,6 +158,7 @@ def loop_tables_clickhouse(req, table_name):
 
 def loop_tables_carbon(req, table_name):
     return loop_tables(req, table_name, True)
+
 
 # lppz.score_file_year_no_oot_20201227giftbox
 def loop_tables(req, table_name, use_carbon=False):
@@ -223,6 +226,7 @@ def loop_tables(req, table_name, use_carbon=False):
     context = {'jsonScript': jsonStr}
     return render(req, 'loop.html', context)
 
+
 def t_lag(request):
     # data = pd.read_csv('data/demo.csv').to_json(orient='records')
     # server 端连接
@@ -231,7 +235,8 @@ def t_lag(request):
     # conn = hive.Connection(host='106.75.22.252', port=10008)
     # t1.time  from_event to_event 是变量
     # 1. 从 html 获取 3个变量的值
-    values = {'start_time':"202009041600",'end_time':"202009301600",'from_event':"feed_visit",'to_event':"message_visit"}
+    values = {'start_time': "202009041600", 'end_time': "202009301600", 'from_event': "feed_visit",
+              'to_event': "message_visit"}
     # 2. sql 传参为变量
     # sql = '''select
     #             date,
@@ -272,7 +277,6 @@ def t_lag(request):
     #         group by 1,2,3
     #         order by 1'''
     # data = pd.read_sql(sql,conn,params=values).to_json(orient='records')
-
 
     data = pd.read_sql('''
         select 
@@ -316,3 +320,50 @@ order by 1''', conn).to_json(orient='records')
     jsonStr = 'data=' + (data)
     context = {'jsonScript': jsonStr}
     return render(request, 't_lag.html', context)
+
+
+def query_data(item):
+    # tuple 拆解
+    i, table_name = item
+    try:
+        if isMac():
+            conn = hive.Connection(host='106.75.22.252', port=10008)
+        # server连接
+        else:
+            conn = hive.Connection(host='10.10.76.185', port=10008)
+        start = time.time()
+        print('start {}'.format(i))
+        cdjs = pd.read_sql('select {},count(*) AS `count` '
+                           'from {} group by '
+                           '{} order by {}'.format(i, table_name, i, i), conn).to_json(orient='records')
+        print('end {}, took {}'.format(i, time.time() - start))
+        return {'name': i, 'str': cdjs}
+    except:
+        print('except {}'.format(i))
+
+
+def loop_feature(req, table_name):
+    if not table_name or table_name == '/':
+        jsonStr = 'data=null'
+        context = {'jsonScript': jsonStr}
+        return render(req, 'loop_feature.html', context)
+    if isMac():
+        conn = hive.Connection(host='106.75.22.252', port=10008)
+        # lppz.score_file_year_no_oot_20201231spending200
+        data = pd.read_sql("select * from {} limit 1".format(table_name), conn)
+    # server连接
+    else:
+        conn = hive.Connection(host='10.10.76.185', port=10008)
+        data = pd.read_sql("select * from {} limit 1".format(table_name),
+                           conn)
+    df = data.drop(['member_no', 'percentile', 'quintile', 'decile', 'ventile', 'quarter', 'score', 'purch_ind',
+                    'outcome_event_ind', 'sample_ind', 'spend_prom_pcnt_year'], axis=1)
+    # 取所有列名
+    cols = df.columns.values.tolist()
+    print(cols)
+    pool = multiprocessing.Pool(42)
+    csd = pool.map(query_data, [(i, table_name) for i in cols])
+    jsonStr = 'data=' + json.dumps(csd)
+    context = {'jsonScript': jsonStr}
+    pool.close()
+    return render(req, 'loop_feature.html', context)
