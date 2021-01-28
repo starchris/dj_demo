@@ -184,11 +184,11 @@ def loop_tables(req, table_name, use_carbon=False):
     else:
         # 本地连接
         if isMac():
-            conn = hive.Connection(host='106.75.22.252', port=10008)
+            conn = hive.Connection(host='106.75.22.252', port=10018)
             data = pd.read_sql("select * from {} where sample_ind=1 limit 1000".format(table_name), conn)
         # server连接
         else:
-            conn = hive.Connection(host='10.10.76.185', port=10008)
+            conn = hive.Connection(host='10.10.76.185', port=10018)
             data = pd.read_sql("select * from {} where sample_ind=1".format(table_name), conn)
         sqlTime = time.time() - start
         start = time.time()
