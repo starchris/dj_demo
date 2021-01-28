@@ -195,7 +195,8 @@ def loop_tables(req, table_name, use_carbon=False):
         pdTime = -1
 
     decile = data['decile']
-    df = data.drop(['member_no', 'percentile', 'quintile', 'decile', 'ventile', 'quarter'], axis=1)
+    df = data.drop(['member_no', 'percentile', 'quintile', 'decile', 'ventile'], axis=1)
+    # df = data.drop(['member_no', 'percentile', 'quintile', 'decile', 'ventile', 'quarter'], axis=1)
     num_cols = df._get_numeric_data().columns
     cat_cols = df[[i for i in df.columns if i not in num_cols]]
     cat_cols = cat_cols.apply(condense_category, axis=0)
@@ -348,16 +349,16 @@ def loop_feature(req, table_name):
         context = {'jsonScript': jsonStr}
         return render(req, 'loop_feature.html', context)
     if isMac():
-        conn = hive.Connection(host='106.75.22.252', port=10008)
+        conn = hive.Connection(host='106.75.22.252', port=10018)
         # lppz.score_file_year_no_oot_20201231spending200
         data = pd.read_sql("select * from {} limit 1".format(table_name), conn)
     # server连接
     else:
-        conn = hive.Connection(host='10.10.76.185', port=10008)
+        conn = hive.Connection(host='10.10.76.185', port=10018)
         data = pd.read_sql("select * from {} limit 1".format(table_name),
                            conn)
-    df = data.drop(['member_no', 'percentile', 'quintile', 'decile', 'ventile', 'quarter', 'score', 'purch_ind',
-                    'outcome_event_ind', 'sample_ind', 'spend_prom_pcnt_year'], axis=1)
+    df = data.drop(['member_no', 'percentile', 'quintile', 'decile', 'ventile', 'ltv',
+                    'outcome_event_ind', 'sample_ind'], axis=1)
     # 取所有列名
     cols = df.columns.values.tolist()
     print(cols)
