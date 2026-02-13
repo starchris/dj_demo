@@ -15,7 +15,7 @@ import os
 # 或直接在此处填写（不推荐提交到版本控制）
 FEISHU_WEBHOOK_URL = os.environ.get(
     "FEISHU_WEBHOOK_URL",
-    ""  # 在此填写你的飞书 Webhook URL，格式：https://open.feishu.cn/open-apis/bot/v2/hook/xxxxx
+    "https://open.feishu.cn/open-apis/bot/v2/hook/98673eca-35d5-4ead-8eb5-e6414f3af19c"
 )
 
 # 飞书 Webhook 签名密钥（可选，如果机器人设置了签名校验）
