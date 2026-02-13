@@ -15,7 +15,7 @@ import os
 # 或直接在此处填写（不推荐提交到版本控制）
 FEISHU_WEBHOOK_URL = os.environ.get(
     "FEISHU_WEBHOOK_URL",
-    "https://open.feishu.cn/open-apis/bot/v2/hook/98673eca-35d5-4ead-8eb5-e6414f3af19c"
+    ""  # 通过环境变量或 GitHub Secrets 配置
 )
 
 # 飞书 Webhook 签名密钥（可选，如果机器人设置了签名校验）
@@ -121,7 +121,7 @@ TIMEZONE = "Asia/Shanghai"
 # 支持所有兼容 OpenAI API 格式的服务：DeepSeek / Moonshot / OpenAI / 智谱 等
 # 默认使用 DeepSeek（性价比高、中文能力强）
 
-LLM_API_KEY = os.environ.get("LLM_API_KEY", "sk-FSQ8haMdhp8Yaq8SDGpFJNv8ZzgNjE0BxWXtK4m9IXatUJTg")
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.moonshot.cn/v1")  # Kimi (Moonshot)
 LLM_MODEL = os.environ.get("LLM_MODEL", "kimi-k2.5")
 

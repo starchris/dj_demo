@@ -1,0 +1,34 @@
+name: 热点新闻捕捉器 - 每日定时推送
+
+on:
+  # 每天北京时间 8:30 自动执行（UTC 0:30）
+  schedule:
+    - cron: '30 0 * * *'
+
+  # 也支持手动触发（在 GitHub Actions 页面点 "Run workflow"）
+  workflow_dispatch:
+
+jobs:
+  fetch-and-send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 安装依赖
+        run: pip install -r news_catcher/requirements.txt
+
+      - name: 抓取新闻 + AI总结 + 发送飞书
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+        run: python -m news_catcher --run-once
