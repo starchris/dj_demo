@@ -181,33 +181,60 @@ ANALYSIS_PROMPT_WITH_DATA = """请基于以下采集到的公开信息，对「{
 
 def _clean_thinking_tags(text: str) -> str:
     """
-    清除 LLM 返回内容中的思考标签
+    清除 LLM 返回内容中的思考标签和重复噪音文本
 
-    Kimi K2.5 等思考模型会在回复中包含 <think>...</think> 标签，
-    需要去除思考过程，只保留最终输出
+    Kimi K2.5 等思考模型可能：
+    1. 包含 <think>...</think> 标签
+    2. 在联网搜索模式下，将思考过程混入 content 中（重复的状态文本）
+
+    清理策略：提取 Markdown 报告正文部分，丢弃无关的思考文本
     """
-    # 移除 <think>...</think> 块
+    # 1. 移除 <think>...</think> 块
     cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
     # 移除可能残留的未闭合 <think> 标签
     cleaned = re.sub(r'<think>.*', '', cleaned, flags=re.DOTALL)
-    # 移除 markdown 代码块包裹
+
+    # 2. 移除 markdown 代码块包裹
     cleaned = re.sub(r'^```[a-z]*\n?', '', cleaned.strip(), flags=re.MULTILINE)
     cleaned = re.sub(r'\n?```$', '', cleaned.strip(), flags=re.MULTILINE)
+
+    # 3. 如果内容中包含 Markdown 报告（以 # 开头的标题），提取报告部分
+    #    丢弃报告之前的思考文本
+    report_match = re.search(r'^(#\s+.+)$', cleaned, flags=re.MULTILINE)
+    if report_match:
+        cleaned = cleaned[report_match.start():]
+
+    # 4. 移除重复的思考状态行
+    #    Kimi K2.5 联网搜索时可能输出大量重复的状态文本，如
+    #    "我已完成..." "我将同时搜索..." 等
+    lines = cleaned.split('\n')
+    seen_lines = set()
+    deduped_lines = []
+    for line in lines:
+        stripped = line.strip()
+        # 对于非空、非 Markdown 格式的短行做去重
+        if stripped and not stripped.startswith(('#', '|', '-', '*', '>')) and len(stripped) < 80:
+            if stripped in seen_lines:
+                continue
+            seen_lines.add(stripped)
+        deduped_lines.append(line)
+    cleaned = '\n'.join(deduped_lines)
+
     return cleaned.strip()
 
 
 def _is_search_capable_model(model: str) -> bool:
     """
-    判断 LLM 模型是否支持联网搜索
+    判断 LLM 模型是否使用内置联网搜索模式
 
-    支持联网搜索的模型可以直接让 LLM 搜索最新信息，
-    效果通常优于我们自行采集后再喂给 LLM
+    注意：Kimi K2.5 虽然支持 $web_search 内置函数，
+    但其多轮 tool_calls 流程与思考模型配合不稳定，
+    因此默认使用手动采集+LLM分析的方式（更可靠）。
+
+    仅对明确标注了 search/online 的非思考模型启用。
     """
     model_lower = model.lower()
-    # Kimi K2.5 / Kimi 系列支持联网搜索
-    if "kimi" in model_lower:
-        return True
-    # 有些模型名包含 search 或 online 标识
+    # 仅对明确带 search 或 online 标识的模型启用内置搜索
     if "search" in model_lower or "online" in model_lower:
         return True
     return False
@@ -276,42 +303,99 @@ class BusinessIntelAgent:
         """
         模式A: 使用 LLM 联网搜索能力直接分析
 
-        适用于 Kimi K2.5 等支持联网搜索的模型，
-        由 LLM 自行搜索最新信息并生成报告
+        适用于 Kimi K2.5 等支持联网搜索的模型。
+        Kimi 的联网搜索是多轮流程：
+          1. 第一次调用：模型决定搜索什么，API 自动执行搜索，返回 tool_calls
+          2. 将搜索结果放回对话，第二次调用：模型基于搜索结果生成报告
+          3. 如果模型需要更多搜索，继续循环（最多 5 轮）
         """
         logger.info(f"使用 LLM 联网搜索模式分析「{company_name}」")
 
         user_prompt = ANALYSIS_PROMPT_WITH_SEARCH.format(company_name=company_name)
 
-        # 构建请求参数
-        create_kwargs = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            "max_tokens": 4096,
-        }
-
-        # Kimi K2.5 是思考模型，temperature 必须为 1
         model_lower = self.model.lower()
         is_thinking_model = ("kimi" in model_lower and "k2" in model_lower)
+        use_builtin_search = ("kimi" in model_lower or "moonshot" in model_lower)
 
-        if is_thinking_model:
-            create_kwargs["temperature"] = 1.0
-            create_kwargs["max_tokens"] = 8192  # 思考过程 + 搜索 + 回答需要更多空间
-        else:
-            create_kwargs["temperature"] = 0.3
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ]
 
-        # 为 Kimi 模型启用联网搜索工具
-        if "kimi" in model_lower:
-            create_kwargs["tools"] = [{"type": "web_search"}]
+        # 基础请求参数
+        base_kwargs = {
+            "model": self.model,
+            "max_tokens": 8192 if is_thinking_model else 4096,
+            "temperature": 1.0 if is_thinking_model else 0.3,
+        }
 
-        response = self.client.chat.completions.create(**create_kwargs)
+        # Kimi/Moonshot 启用内置联网搜索
+        if use_builtin_search:
+            base_kwargs["tools"] = [{
+                "type": "builtin_function",
+                "function": {"name": "$web_search"},
+            }]
+
+        # 多轮对话循环：处理 tool_calls（搜索 → 结果 → 继续生成）
+        # Kimi 的联网搜索由 API 自动执行，返回 finish_reason="tool_calls"，
+        # 我们需要将搜索结果放回对话继续调用，直到模型生成最终报告
+        max_rounds = 5
+        for round_num in range(max_rounds):
+            logger.info(f"  LLM 调用第 {round_num + 1} 轮...")
+
+            response = self.client.chat.completions.create(
+                messages=messages,
+                **base_kwargs,
+            )
+
+            choice = response.choices[0]
+            assistant_msg = choice.message
+
+            # 如果模型返回了最终内容（finish_reason != tool_calls），结束循环
+            if choice.finish_reason != "tool_calls":
+                raw_content = assistant_msg.content or ""
+                report = _clean_thinking_tags(raw_content)
+                logger.info(f"  LLM 生成完成（第 {round_num + 1} 轮），报告长度: {len(report)}")
+                return report
+
+            # 模型返回了 tool_calls，需要继续对话
+            logger.info(f"  模型请求搜索（{len(assistant_msg.tool_calls)} 次），处理中...")
+
+            # 手动构建 assistant 消息（不用 model_dump()，避免序列化问题）
+            # Kimi K2.5 是思考模型，回传 assistant 消息时必须包含 reasoning_content 字段
+            assistant_dict = {
+                "role": "assistant",
+                "content": assistant_msg.content or "",
+                "reasoning_content": " ",  # Kimi K2.5 思考模型要求此字段
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": tc.type,
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    }
+                    for tc in assistant_msg.tool_calls
+                ],
+            }
+            messages.append(assistant_dict)
+
+            # 将每个 tool_call 的结果作为 tool 消息加入对话
+            # 对于 Kimi 的 builtin_function，搜索已由 API 自动执行，
+            # 结果在 tool_call.function.arguments 中，直接回传即可
+            for tool_call in assistant_msg.tool_calls:
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "name": tool_call.function.name,
+                    "content": tool_call.function.arguments,
+                })
+
+        # 如果达到最大轮数仍未生成最终内容
+        logger.warning(f"达到最大搜索轮数 {max_rounds}，尝试提取最后一轮内容")
         raw_content = response.choices[0].message.content or ""
-
-        report = _clean_thinking_tags(raw_content)
-        return report
+        return _clean_thinking_tags(raw_content)
 
     def _analyze_with_research(self, company_name: str) -> str:
         """
