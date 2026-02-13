@@ -2,23 +2,14 @@
 主程序 - 热点新闻捕捉器
 Main Entry - Hot News Catcher for 15th Five-Year Plan Industries
 
-功能：
-1. 手动运行：立即抓取并发送新闻
-2. 定时运行：每日定时抓取并发送新闻
-3. 测试模式：仅抓取不发送，用于调试
+流程：
+  1. 抓取新闻  ->  2. 生成行业动态总结  ->  3. 发送到飞书
 
 使用方式：
-    # 立即运行一次
-    python -m news_catcher.main --run-once
-
-    # 启动定时任务
-    python -m news_catcher.main --schedule
-
-    # 测试模式（仅抓取，不发送飞书）
-    python -m news_catcher.main --test
-
-    # 发送测试消息到飞书
-    python -m news_catcher.main --test-feishu
+    python -m news_catcher --run-once        # 立即运行一次
+    python -m news_catcher --schedule         # 启动定时任务
+    python -m news_catcher --test             # 测试模式（不发送飞书）
+    python -m news_catcher --test-feishu      # 测试飞书连接
 """
 
 import argparse
@@ -34,6 +25,7 @@ import time
 from .config import (
     LOG_DIR,
     LOG_LEVEL,
+    LLM_API_KEY,
     SCHEDULE_HOUR,
     SCHEDULE_MINUTE,
     TIMEZONE,
@@ -41,6 +33,8 @@ from .config import (
 )
 from .feishu_notifier import FeishuNotifier, send_to_feishu
 from .news_fetcher import NewsFetcher, fetch_news
+from .summarizer import generate_summaries
+
 
 # ============================================================
 # 日志配置
@@ -52,16 +46,13 @@ def setup_logging():
     log_format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
     date_format = "%Y-%m-%d %H:%M:%S"
 
-    # 控制台输出
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(logging.Formatter(log_format, date_format))
 
-    # 文件输出
     log_file = os.path.join(LOG_DIR, f"news_catcher_{datetime.now().strftime('%Y%m%d')}.log")
     file_handler = logging.FileHandler(log_file, encoding="utf-8")
     file_handler.setFormatter(logging.Formatter(log_format, date_format))
 
-    # 配置根日志器
     root_logger = logging.getLogger("news_catcher")
     root_logger.setLevel(getattr(logging, LOG_LEVEL.upper(), logging.INFO))
     root_logger.addHandler(console_handler)
@@ -78,11 +69,7 @@ logger = None
 # ============================================================
 def run_news_job(test_mode: bool = False) -> bool:
     """
-    执行一次新闻抓取和发送任务
-    Args:
-        test_mode: 测试模式，仅抓取不发送
-    Returns:
-        是否成功
+    执行一次完整的新闻抓取 -> 总结 -> 发送流程
     """
     global logger
     if logger is None:
@@ -92,18 +79,18 @@ def run_news_job(test_mode: bool = False) -> bool:
     logger.info("🔥 热点新闻捕捉器 - 开始执行")
     logger.info(f"  时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info(f"  模式: {'测试模式' if test_mode else '正式模式'}")
+    logger.info(f"  LLM 总结: {'已配置' if LLM_API_KEY else '未配置（将使用标题摘要模式）'}")
     logger.info("=" * 60)
 
     try:
-        # Step 1: 抓取新闻
-        logger.info("\n📡 Step 1: 抓取行业新闻...")
+        # ── Step 1: 抓取新闻 ──
+        logger.info("\n📡 Step 1/3: 抓取行业新闻...")
         news_by_industry = fetch_news()
 
         if not news_by_industry:
             logger.warning("未获取到任何新闻，任务结束")
             return False
 
-        # 统计
         total_count = sum(len(items) for items in news_by_industry.values())
         logger.info(f"\n📊 抓取结果统计:")
         for industry, items in news_by_industry.items():
@@ -112,28 +99,43 @@ def run_news_job(test_mode: bool = False) -> bool:
         logger.info(f"  ────────────────")
         logger.info(f"  📰 总计: {total_count} 条")
 
-        # Step 2: 保存到本地（备份）
-        save_news_to_file(news_by_industry)
+        # ── Step 2: 生成行业动态总结 ──
+        logger.info("\n🧠 Step 2/3: 生成行业动态总结...")
+        summaries = generate_summaries(news_by_industry)
 
-        # Step 3: 发送到飞书
+        logger.info(f"\n📝 总结生成完成，共 {len(summaries)} 个行业：")
+        for industry, summary in summaries.items():
+            emoji = INDUSTRIES.get(industry, {}).get("emoji", "📰")
+            # 显示总结的前两行
+            preview_lines = summary.strip().split("\n")[:2]
+            preview = " / ".join(line.strip() for line in preview_lines)
+            if len(summary.strip().split("\n")) > 2:
+                preview += " ..."
+            logger.info(f"  {emoji} {industry}: {preview}")
+
+        # 保存到本地（备份，含总结）
+        save_news_to_file(news_by_industry, summaries)
+
+        # ── Step 3: 发送到飞书 ──
         if test_mode:
             logger.info("\n🧪 测试模式：跳过飞书发送")
-            logger.info("抓取的新闻内容：")
-            for industry, items in news_by_industry.items():
-                logger.info(f"\n  【{industry}】")
-                for i, item in enumerate(items, 1):
-                    logger.info(f"    {i}. {item.title}")
-                    logger.info(f"       链接: {item.url}")
-                    logger.info(f"       来源: {item.source}")
-                    if item.summary:
-                        logger.info(f"       摘要: {item.summary[:80]}...")
+            logger.info("\n" + "─" * 50)
+            logger.info("📋 以下为各行业完整总结：")
+            logger.info("─" * 50)
+            for industry, summary in summaries.items():
+                emoji = INDUSTRIES.get(industry, {}).get("emoji", "📰")
+                logger.info(f"\n{emoji} 【{industry}】")
+                for line in summary.strip().split("\n"):
+                    logger.info(f"  {line}")
+                logger.info(f"  （{len(news_by_industry.get(industry, []))} 条相关新闻）")
+            logger.info("─" * 50)
             return True
         else:
-            logger.info("\n📤 Step 2: 发送到飞书...")
-            success = send_to_feishu(news_by_industry)
+            logger.info("\n📤 Step 3/3: 发送到飞书...")
+            success = send_to_feishu(news_by_industry, summaries=summaries)
 
             if success:
-                logger.info("✅ 新闻已成功发送到飞书！")
+                logger.info("✅ 行业动态速览已成功发送到飞书！")
             else:
                 logger.error("❌ 飞书发送失败")
             return success
@@ -146,8 +148,8 @@ def run_news_job(test_mode: bool = False) -> bool:
         logger.info("任务执行完毕\n")
 
 
-def save_news_to_file(news_by_industry: dict) -> None:
-    """保存新闻到本地JSON文件（备份）"""
+def save_news_to_file(news_by_industry: dict, summaries: dict[str, str] = None) -> None:
+    """保存新闻和总结到本地 JSON（备份）"""
     global logger
     if logger is None:
         logger = setup_logging()
@@ -159,10 +161,12 @@ def save_news_to_file(news_by_industry: dict) -> None:
         filename = f"news_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         filepath = os.path.join(data_dir, filename)
 
-        # 转换为可序列化的格式
         serializable = {}
         for industry, items in news_by_industry.items():
-            serializable[industry] = [item.to_dict() for item in items]
+            serializable[industry] = {
+                "summary": summaries.get(industry, "") if summaries else "",
+                "news": [item.to_dict() for item in items],
+            }
 
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(serializable, f, ensure_ascii=False, indent=2)
@@ -186,13 +190,12 @@ def start_scheduler():
     logger.info(f"   时区: {TIMEZONE}")
     logger.info(f"   按 Ctrl+C 停止\n")
 
-    # 设置定时任务
     schedule.every().day.at(schedule_time).do(run_news_job)
 
     try:
         while True:
             schedule.run_pending()
-            time.sleep(60)  # 每分钟检查一次
+            time.sleep(60)
     except KeyboardInterrupt:
         logger.info("\n⏹ 定时任务已停止")
 
@@ -210,6 +213,7 @@ def test_feishu_connection():
             f"🔔 热点新闻捕捉器测试消息\n"
             f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
             f"状态: 连接正常 ✅\n"
+            f"LLM 总结: {'已配置' if LLM_API_KEY else '未配置'}\n"
             f"覆盖行业: {', '.join(INDUSTRIES.keys())}"
         )
         if success:
@@ -231,51 +235,36 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  python -m news_catcher.main --run-once        # 立即运行一次
-  python -m news_catcher.main --schedule         # 启动定时任务
-  python -m news_catcher.main --test             # 测试模式（不发送飞书）
-  python -m news_catcher.main --test-feishu      # 测试飞书连接
+  python -m news_catcher --run-once        # 立即运行一次
+  python -m news_catcher --schedule         # 启动定时任务
+  python -m news_catcher --test             # 测试模式（不发送飞书）
+  python -m news_catcher --test-feishu      # 测试飞书连接
 
 环境变量:
   FEISHU_WEBHOOK_URL     飞书自定义机器人 Webhook URL
   FEISHU_WEBHOOK_SECRET  飞书签名密钥（可选）
+  LLM_API_KEY            LLM API 密钥（DeepSeek/Moonshot/OpenAI）
+  LLM_BASE_URL           LLM API 地址（默认 https://api.deepseek.com）
+  LLM_MODEL              LLM 模型名（默认 deepseek-chat）
   LOG_LEVEL              日志级别（默认 INFO）
-        """
+        """,
     )
 
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument(
-        "--run-once",
-        action="store_true",
-        help="立即执行一次新闻抓取并发送"
-    )
-    group.add_argument(
-        "--schedule",
-        action="store_true",
-        help="启动定时任务，每日自动执行"
-    )
-    group.add_argument(
-        "--test",
-        action="store_true",
-        help="测试模式：仅抓取新闻，不发送到飞书"
-    )
-    group.add_argument(
-        "--test-feishu",
-        action="store_true",
-        help="测试飞书 Webhook 连接"
-    )
+    group.add_argument("--run-once", action="store_true", help="立即执行一次")
+    group.add_argument("--schedule", action="store_true", help="启动每日定时任务")
+    group.add_argument("--test", action="store_true", help="测试模式（不发送飞书）")
+    group.add_argument("--test-feishu", action="store_true", help="测试飞书连接")
 
-    parser.add_argument(
-        "--webhook-url",
-        type=str,
-        help="指定飞书 Webhook URL（覆盖配置和环境变量）"
-    )
+    parser.add_argument("--webhook-url", type=str, help="指定飞书 Webhook URL")
+    parser.add_argument("--llm-key", type=str, help="指定 LLM API Key")
 
     args = parser.parse_args()
 
-    # 如果指定了 webhook URL，设置环境变量
     if args.webhook_url:
         os.environ["FEISHU_WEBHOOK_URL"] = args.webhook_url
+    if args.llm_key:
+        os.environ["LLM_API_KEY"] = args.llm_key
 
     if args.run_once:
         success = run_news_job(test_mode=False)

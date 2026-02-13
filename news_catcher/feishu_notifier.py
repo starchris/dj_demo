@@ -2,9 +2,9 @@
 飞书通知模块 - 通过 Webhook 发送新闻到飞书
 Feishu Notifier Module - Send news to Feishu via Webhook
 
-支持的消息类型：
-1. 富文本消息（post）- 用于详细新闻展示
-2. 交互卡片消息（interactive）- 用于美观展示
+消息格式：
+  每个行业 = 动态总结（文字要点） + 新闻链接列表
+  先读总结，感兴趣再点链接
 """
 
 import base64
@@ -43,23 +43,18 @@ class FeishuNotifier:
             )
 
     def _gen_sign(self, timestamp: str) -> str:
-        """
-        生成签名（如果配置了签名密钥）
-        https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot
-        """
+        """生成签名"""
         if not self.secret:
             return ""
-
         string_to_sign = f"{timestamp}\n{self.secret}"
         hmac_code = hmac.new(
             string_to_sign.encode("utf-8"),
-            digestmod=hashlib.sha256
+            digestmod=hashlib.sha256,
         ).digest()
         return base64.b64encode(hmac_code).decode("utf-8")
 
     def _send_request(self, payload: dict) -> bool:
         """发送请求到飞书 Webhook"""
-        # 添加签名（如果有密钥）
         if self.secret:
             timestamp = str(int(time.time()))
             payload["timestamp"] = timestamp
@@ -72,7 +67,6 @@ class FeishuNotifier:
                 timeout=REQUEST_TIMEOUT,
                 headers={"Content-Type": "application/json"},
             )
-
             result = resp.json()
             if result.get("code") == 0 or result.get("StatusCode") == 0:
                 logger.info("飞书消息发送成功")
@@ -80,7 +74,6 @@ class FeishuNotifier:
             else:
                 logger.error(f"飞书消息发送失败: {result}")
                 return False
-
         except requests.RequestException as e:
             logger.error(f"飞书请求异常: {e}")
             return False
@@ -88,10 +81,22 @@ class FeishuNotifier:
             logger.error(f"飞书响应解析失败: {resp.text}")
             return False
 
-    def send_news_card(self, news_by_industry: dict[str, list[NewsItem]]) -> bool:
+    # ================================================================
+    # 带总结的新版卡片（主要入口）
+    # ================================================================
+
+    def send_news_card_with_summary(
+        self,
+        news_by_industry: dict[str, list[NewsItem]],
+        summaries: dict[str, str],
+    ) -> bool:
         """
-        以交互卡片形式发送新闻到飞书
-        每个行业一个区块，包含新闻标题和链接
+        以交互卡片发送新闻 + 行业总结
+
+        布局（每个行业）：
+          ── 行业标题 ──
+          📝 动态总结（3~6 行文字要点）
+          📎 相关新闻链接（折叠在总结下方）
         """
         if not news_by_industry:
             logger.warning("没有新闻可发送")
@@ -99,215 +104,181 @@ class FeishuNotifier:
 
         today = datetime.now().strftime("%Y年%m月%d日")
         total_count = sum(len(items) for items in news_by_industry.values())
+        industry_count = len(news_by_industry)
 
-        # 构建卡片元素
         elements = []
 
-        # 头部说明
+        # ── 头部 ──
         elements.append({
             "tag": "div",
             "text": {
                 "tag": "lark_md",
-                "content": f"📡 今日共捕获 **{total_count}** 条十五五规划重点行业新闻"
-            }
+                "content": (
+                    f"📡 今日覆盖 **{industry_count}** 个行业，"
+                    f"共捕获 **{total_count}** 条新闻\n"
+                    f"以下为各行业动态要点总结，可直接阅读；如需详情请点击新闻链接 👇"
+                ),
+            },
         })
         elements.append({"tag": "hr"})
 
-        # 按行业分组展示新闻
+        # ── 逐行业：总结 + 链接 ──
         for industry, news_items in news_by_industry.items():
             emoji = INDUSTRIES.get(industry, {}).get("emoji", "📰")
+            summary_text = summaries.get(industry, "")
 
             # 行业标题
             elements.append({
                 "tag": "div",
                 "text": {
                     "tag": "lark_md",
-                    "content": f"**{emoji} {industry}**（{len(news_items)} 条）"
-                }
+                    "content": f"**{emoji} {industry}**",
+                },
             })
 
-            # 新闻列表
-            news_lines = []
+            # 动态总结
+            if summary_text:
+                elements.append({
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": summary_text,
+                    },
+                })
+
+            # 新闻链接列表（紧凑格式）
+            link_lines = []
             for i, item in enumerate(news_items, 1):
-                source_info = f"  *{item.source}*" if item.source else ""
-                time_info = f"  {item.publish_time}" if item.publish_time else ""
-                news_lines.append(
-                    f"{i}. [{item.title}]({item.url}){source_info}{time_info}"
-                )
+                source = f" *{item.source}*" if item.source else ""
+                link_lines.append(f"[{i}. {item.title}]({item.url}){source}")
 
-            elements.append({
-                "tag": "div",
-                "text": {
-                    "tag": "lark_md",
-                    "content": "\n".join(news_lines)
-                }
-            })
+            if link_lines:
+                elements.append({
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": "📎 **相关新闻**\n" + "\n".join(link_lines),
+                    },
+                })
+
             elements.append({"tag": "hr"})
 
-        # 底部信息
+        # ── 底部 ──
         elements.append({
             "tag": "note",
             "elements": [
                 {
                     "tag": "plain_text",
-                    "content": f"🕐 数据更新时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 热点新闻捕捉器"
+                    "content": (
+                        f"🕐 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                        f" | 十五五规划重点行业热点新闻捕捉器"
+                    ),
                 }
-            ]
+            ],
         })
 
-        # 构建卡片消息
         card_payload = {
             "msg_type": "interactive",
             "card": {
-                "config": {
-                    "wide_screen_mode": True
-                },
+                "config": {"wide_screen_mode": True},
                 "header": {
                     "title": {
                         "tag": "plain_text",
-                        "content": f"🔥 十五五规划重点行业热点新闻 | {today}"
+                        "content": f"🔥 十五五规划重点行业动态速览 | {today}",
                     },
-                    "template": "red"
+                    "template": "red",
                 },
-                "elements": elements
-            }
+                "elements": elements,
+            },
         }
 
         return self._send_request(card_payload)
 
-    def send_news_post(self, news_by_industry: dict[str, list[NewsItem]]) -> bool:
+    # ================================================================
+    # 分批发送（内容过长时自动拆分）
+    # ================================================================
+
+    def send_news_with_summary(
+        self,
+        news_by_industry: dict[str, list[NewsItem]],
+        summaries: dict[str, str],
+    ) -> bool:
         """
-        以富文本（post）形式发送新闻到飞书
-        作为卡片消息的备选方案
+        智能发送：内容过多时自动分批，每批最多 4 个行业
         """
         if not news_by_industry:
             logger.warning("没有新闻可发送")
             return False
 
-        today = datetime.now().strftime("%Y年%m月%d日")
-        total_count = sum(len(items) for items in news_by_industry.values())
+        industries = list(news_by_industry.keys())
+        batch_size = 4  # 飞书卡片有大小限制，每批 4 个行业比较安全
 
-        # 构建富文本内容
-        content = []
+        if len(industries) <= batch_size:
+            return self.send_news_card_with_summary(news_by_industry, summaries)
 
-        # 头部
-        content.append([
-            {"tag": "text", "text": f"📡 今日共捕获 {total_count} 条行业新闻\n"}
-        ])
-        content.append([{"tag": "text", "text": "━" * 30 + "\n"}])
-
-        for industry, news_items in news_by_industry.items():
-            emoji = INDUSTRIES.get(industry, {}).get("emoji", "📰")
-
-            # 行业标题
-            content.append([
-                {"tag": "text", "text": f"\n{emoji} "},
-                {"tag": "text", "text": f"【{industry}】", "style": ["bold"]},
-                {"tag": "text", "text": f"（{len(news_items)} 条）\n"},
-            ])
-
-            # 新闻列表
-            for i, item in enumerate(news_items, 1):
-                line = [
-                    {"tag": "text", "text": f"  {i}. "},
-                    {"tag": "a", "text": item.title, "href": item.url},
-                ]
-                if item.source:
-                    line.append({"tag": "text", "text": f"  — {item.source}"})
-                line.append({"tag": "text", "text": "\n"})
-                content.append(line)
-
-            content.append([{"tag": "text", "text": "\n"}])
-
-        # 底部
-        content.append([
-            {"tag": "text", "text": f"🕐 更新时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"},
-            {"tag": "text", "text": "📌 数据来源: 百度新闻/Bing新闻/RSS订阅"},
-        ])
-
-        post_payload = {
-            "msg_type": "post",
-            "content": {
-                "post": {
-                    "zh_cn": {
-                        "title": f"🔥 十五五规划重点行业热点新闻 | {today}",
-                        "content": content
-                    }
-                }
-            }
-        }
-
-        return self._send_request(post_payload)
-
-    def send_text(self, text: str) -> bool:
-        """发送纯文本消息（用于测试或简单通知）"""
-        payload = {
-            "msg_type": "text",
-            "content": {
-                "text": text
-            }
-        }
-        return self._send_request(payload)
-
-    def send_news(self, news_by_industry: dict[str, list[NewsItem]], use_card: bool = True) -> bool:
-        """
-        发送新闻到飞书
-        Args:
-            news_by_industry: {行业名: [NewsItem, ...]}
-            use_card: 是否使用卡片消息（默认True），False则使用富文本
-        """
-        if use_card:
-            # 飞书卡片消息有大小限制，如果内容太多需要分批发送
-            total_items = sum(len(v) for v in news_by_industry.values())
-
-            if total_items > 30:
-                # 分批发送
-                return self._send_in_batches(news_by_industry)
-            else:
-                success = self.send_news_card(news_by_industry)
-                if not success:
-                    # 卡片发送失败，回退到富文本
-                    logger.warning("卡片消息发送失败，尝试使用富文本格式...")
-                    return self.send_news_post(news_by_industry)
-                return success
-        else:
-            return self.send_news_post(news_by_industry)
-
-    def _send_in_batches(self, news_by_industry: dict[str, list[NewsItem]]) -> bool:
-        """分批发送新闻（当新闻数量过多时）"""
-        industries = list(news_by_industry.items())
-        batch_size = 5  # 每批最多5个行业
+        # 分批
         all_success = True
-
         for i in range(0, len(industries), batch_size):
-            batch = dict(industries[i:i + batch_size])
+            batch_keys = industries[i : i + batch_size]
+            batch_news = {k: news_by_industry[k] for k in batch_keys}
             batch_num = i // batch_size + 1
             total_batches = (len(industries) + batch_size - 1) // batch_size
 
-            logger.info(f"正在发送第 {batch_num}/{total_batches} 批新闻...")
-            success = self.send_news_card(batch)
+            logger.info(f"正在发送第 {batch_num}/{total_batches} 批（{', '.join(batch_keys)}）")
+            success = self.send_news_card_with_summary(batch_news, summaries)
 
             if not success:
                 all_success = False
-                logger.error(f"第 {batch_num} 批新闻发送失败")
+                logger.error(f"第 {batch_num} 批发送失败")
 
-            # 批次间隔
             if i + batch_size < len(industries):
                 time.sleep(1)
 
         return all_success
 
+    # ================================================================
+    # 旧版兼容 & 工具方法
+    # ================================================================
 
-def send_to_feishu(news_by_industry: dict[str, list[NewsItem]], webhook_url: str = None) -> bool:
+    def send_news_card(self, news_by_industry: dict[str, list[NewsItem]]) -> bool:
+        """旧版：仅链接的卡片（无总结时的回退）"""
+        # 生成空总结，复用新版格式
+        empty_summaries = {k: "" for k in news_by_industry}
+        return self.send_news_card_with_summary(news_by_industry, empty_summaries)
+
+    def send_text(self, text: str) -> bool:
+        """发送纯文本消息"""
+        payload = {"msg_type": "text", "content": {"text": text}}
+        return self._send_request(payload)
+
+    def send_news(
+        self,
+        news_by_industry: dict[str, list[NewsItem]],
+        summaries: dict[str, str] = None,
+    ) -> bool:
+        """
+        统一发送入口
+        Args:
+            news_by_industry: {行业名: [NewsItem, ...]}
+            summaries: {行业名: "总结文本"}  可选
+        """
+        if summaries:
+            return self.send_news_with_summary(news_by_industry, summaries)
+        else:
+            return self.send_news_card(news_by_industry)
+
+
+def send_to_feishu(
+    news_by_industry: dict[str, list[NewsItem]],
+    summaries: dict[str, str] = None,
+    webhook_url: str = None,
+) -> bool:
     """
     便捷函数：发送新闻到飞书
-    Args:
-        news_by_industry: {行业名: [NewsItem, ...]}
-        webhook_url: 飞书 Webhook URL（可选，不传则使用配置）
     """
     try:
         notifier = FeishuNotifier(webhook_url=webhook_url)
-        return notifier.send_news(news_by_industry)
+        return notifier.send_news(news_by_industry, summaries=summaries)
     except ValueError as e:
         logger.error(str(e))
         return False
