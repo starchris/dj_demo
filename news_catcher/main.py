@@ -1,0 +1,294 @@
+"""
+主程序 - 热点新闻捕捉器
+Main Entry - Hot News Catcher for 15th Five-Year Plan Industries
+
+功能：
+1. 手动运行：立即抓取并发送新闻
+2. 定时运行：每日定时抓取并发送新闻
+3. 测试模式：仅抓取不发送，用于调试
+
+使用方式：
+    # 立即运行一次
+    python -m news_catcher.main --run-once
+
+    # 启动定时任务
+    python -m news_catcher.main --schedule
+
+    # 测试模式（仅抓取，不发送飞书）
+    python -m news_catcher.main --test
+
+    # 发送测试消息到飞书
+    python -m news_catcher.main --test-feishu
+"""
+
+import argparse
+import json
+import logging
+import os
+import sys
+from datetime import datetime
+
+import schedule
+import time
+
+from .config import (
+    LOG_DIR,
+    LOG_LEVEL,
+    SCHEDULE_HOUR,
+    SCHEDULE_MINUTE,
+    TIMEZONE,
+    INDUSTRIES,
+)
+from .feishu_notifier import FeishuNotifier, send_to_feishu
+from .news_fetcher import NewsFetcher, fetch_news
+
+# ============================================================
+# 日志配置
+# ============================================================
+def setup_logging():
+    """配置日志"""
+    os.makedirs(LOG_DIR, exist_ok=True)
+
+    log_format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    date_format = "%Y-%m-%d %H:%M:%S"
+
+    # 控制台输出
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(logging.Formatter(log_format, date_format))
+
+    # 文件输出
+    log_file = os.path.join(LOG_DIR, f"news_catcher_{datetime.now().strftime('%Y%m%d')}.log")
+    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    file_handler.setFormatter(logging.Formatter(log_format, date_format))
+
+    # 配置根日志器
+    root_logger = logging.getLogger("news_catcher")
+    root_logger.setLevel(getattr(logging, LOG_LEVEL.upper(), logging.INFO))
+    root_logger.addHandler(console_handler)
+    root_logger.addHandler(file_handler)
+
+    return root_logger
+
+
+logger = None
+
+
+# ============================================================
+# 核心任务
+# ============================================================
+def run_news_job(test_mode: bool = False) -> bool:
+    """
+    执行一次新闻抓取和发送任务
+    Args:
+        test_mode: 测试模式，仅抓取不发送
+    Returns:
+        是否成功
+    """
+    global logger
+    if logger is None:
+        logger = setup_logging()
+
+    logger.info("=" * 60)
+    logger.info("🔥 热点新闻捕捉器 - 开始执行")
+    logger.info(f"  时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"  模式: {'测试模式' if test_mode else '正式模式'}")
+    logger.info("=" * 60)
+
+    try:
+        # Step 1: 抓取新闻
+        logger.info("\n📡 Step 1: 抓取行业新闻...")
+        news_by_industry = fetch_news()
+
+        if not news_by_industry:
+            logger.warning("未获取到任何新闻，任务结束")
+            return False
+
+        # 统计
+        total_count = sum(len(items) for items in news_by_industry.values())
+        logger.info(f"\n📊 抓取结果统计:")
+        for industry, items in news_by_industry.items():
+            emoji = INDUSTRIES.get(industry, {}).get("emoji", "📰")
+            logger.info(f"  {emoji} {industry}: {len(items)} 条")
+        logger.info(f"  ────────────────")
+        logger.info(f"  📰 总计: {total_count} 条")
+
+        # Step 2: 保存到本地（备份）
+        save_news_to_file(news_by_industry)
+
+        # Step 3: 发送到飞书
+        if test_mode:
+            logger.info("\n🧪 测试模式：跳过飞书发送")
+            logger.info("抓取的新闻内容：")
+            for industry, items in news_by_industry.items():
+                logger.info(f"\n  【{industry}】")
+                for i, item in enumerate(items, 1):
+                    logger.info(f"    {i}. {item.title}")
+                    logger.info(f"       链接: {item.url}")
+                    logger.info(f"       来源: {item.source}")
+                    if item.summary:
+                        logger.info(f"       摘要: {item.summary[:80]}...")
+            return True
+        else:
+            logger.info("\n📤 Step 2: 发送到飞书...")
+            success = send_to_feishu(news_by_industry)
+
+            if success:
+                logger.info("✅ 新闻已成功发送到飞书！")
+            else:
+                logger.error("❌ 飞书发送失败")
+            return success
+
+    except Exception as e:
+        logger.error(f"❌ 任务执行失败: {e}", exc_info=True)
+        return False
+    finally:
+        logger.info("=" * 60)
+        logger.info("任务执行完毕\n")
+
+
+def save_news_to_file(news_by_industry: dict) -> None:
+    """保存新闻到本地JSON文件（备份）"""
+    global logger
+    if logger is None:
+        logger = setup_logging()
+
+    try:
+        data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+        os.makedirs(data_dir, exist_ok=True)
+
+        filename = f"news_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        filepath = os.path.join(data_dir, filename)
+
+        # 转换为可序列化的格式
+        serializable = {}
+        for industry, items in news_by_industry.items():
+            serializable[industry] = [item.to_dict() for item in items]
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(serializable, f, ensure_ascii=False, indent=2)
+
+        logger.info(f"📁 新闻已保存到: {filepath}")
+    except Exception as e:
+        logger.error(f"保存新闻文件失败: {e}")
+
+
+# ============================================================
+# 定时任务
+# ============================================================
+def start_scheduler():
+    """启动定时任务"""
+    global logger
+    if logger is None:
+        logger = setup_logging()
+
+    schedule_time = f"{SCHEDULE_HOUR:02d}:{SCHEDULE_MINUTE:02d}"
+    logger.info(f"⏰ 定时任务已启动，每日 {schedule_time} 执行")
+    logger.info(f"   时区: {TIMEZONE}")
+    logger.info(f"   按 Ctrl+C 停止\n")
+
+    # 设置定时任务
+    schedule.every().day.at(schedule_time).do(run_news_job)
+
+    try:
+        while True:
+            schedule.run_pending()
+            time.sleep(60)  # 每分钟检查一次
+    except KeyboardInterrupt:
+        logger.info("\n⏹ 定时任务已停止")
+
+
+def test_feishu_connection():
+    """测试飞书 Webhook 连接"""
+    global logger
+    if logger is None:
+        logger = setup_logging()
+
+    logger.info("🧪 测试飞书 Webhook 连接...")
+    try:
+        notifier = FeishuNotifier()
+        success = notifier.send_text(
+            f"🔔 热点新闻捕捉器测试消息\n"
+            f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"状态: 连接正常 ✅\n"
+            f"覆盖行业: {', '.join(INDUSTRIES.keys())}"
+        )
+        if success:
+            logger.info("✅ 飞书连接测试成功！")
+        else:
+            logger.error("❌ 飞书连接测试失败")
+        return success
+    except Exception as e:
+        logger.error(f"❌ 飞书连接测试异常: {e}")
+        return False
+
+
+# ============================================================
+# 命令行入口
+# ============================================================
+def main():
+    parser = argparse.ArgumentParser(
+        description="🔥 热点新闻捕捉器 - 十五五规划重点行业动态",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例:
+  python -m news_catcher.main --run-once        # 立即运行一次
+  python -m news_catcher.main --schedule         # 启动定时任务
+  python -m news_catcher.main --test             # 测试模式（不发送飞书）
+  python -m news_catcher.main --test-feishu      # 测试飞书连接
+
+环境变量:
+  FEISHU_WEBHOOK_URL     飞书自定义机器人 Webhook URL
+  FEISHU_WEBHOOK_SECRET  飞书签名密钥（可选）
+  LOG_LEVEL              日志级别（默认 INFO）
+        """
+    )
+
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        "--run-once",
+        action="store_true",
+        help="立即执行一次新闻抓取并发送"
+    )
+    group.add_argument(
+        "--schedule",
+        action="store_true",
+        help="启动定时任务，每日自动执行"
+    )
+    group.add_argument(
+        "--test",
+        action="store_true",
+        help="测试模式：仅抓取新闻，不发送到飞书"
+    )
+    group.add_argument(
+        "--test-feishu",
+        action="store_true",
+        help="测试飞书 Webhook 连接"
+    )
+
+    parser.add_argument(
+        "--webhook-url",
+        type=str,
+        help="指定飞书 Webhook URL（覆盖配置和环境变量）"
+    )
+
+    args = parser.parse_args()
+
+    # 如果指定了 webhook URL，设置环境变量
+    if args.webhook_url:
+        os.environ["FEISHU_WEBHOOK_URL"] = args.webhook_url
+
+    if args.run_once:
+        success = run_news_job(test_mode=False)
+        sys.exit(0 if success else 1)
+    elif args.schedule:
+        start_scheduler()
+    elif args.test:
+        success = run_news_job(test_mode=True)
+        sys.exit(0 if success else 1)
+    elif args.test_feishu:
+        success = test_feishu_connection()
+        sys.exit(0 if success else 1)
+
+
+if __name__ == "__main__":
+    main()

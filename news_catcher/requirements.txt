@@ -1,0 +1,8 @@
+# 热点新闻捕捉器 - 依赖包
+# Hot News Catcher Dependencies
+
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+feedparser>=6.0.0
+schedule>=1.2.0
+lxml>=5.0.0

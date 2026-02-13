@@ -1,2 +1,7 @@
 venv/
 .idea/
+__pycache__/
+*.pyc
+news_catcher/data/
+news_catcher/logs/
+.env
