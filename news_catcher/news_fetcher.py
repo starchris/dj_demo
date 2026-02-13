@@ -120,6 +120,15 @@ class NewsFetcher:
             except Exception as e:
                 logger.error(f"Bing新闻抓取失败 [{keywords[0]}]: {e}")
 
+        # 方法3：搜狗新闻搜索（进一步补充）
+        if len(news_items) < MAX_NEWS_PER_INDUSTRY:
+            try:
+                primary_keyword = keywords[0]
+                items = self._fetch_from_sogou_news(primary_keyword, industry)
+                news_items.extend(items)
+            except Exception as e:
+                logger.error(f"搜狗新闻抓取失败 [{keywords[0]}]: {e}")
+
         # 去重
         unique_news = self._deduplicate(news_items)
         return unique_news
@@ -242,6 +251,62 @@ class NewsFetcher:
 
         except requests.RequestException as e:
             logger.error(f"Bing新闻请求异常: {e}")
+
+        return news_items
+
+    def _fetch_from_sogou_news(self, keyword: str, industry: str) -> list[NewsItem]:
+        """从搜狗新闻搜索抓取新闻（补充源）"""
+        news_items = []
+        search_url = f"https://news.sogou.com/news?query={quote(keyword)}&mode=1&sort=0"
+
+        try:
+            resp = self.session.get(search_url, timeout=REQUEST_TIMEOUT)
+            resp.encoding = "utf-8"
+
+            if resp.status_code != 200:
+                logger.warning(f"搜狗新闻请求失败: HTTP {resp.status_code}")
+                return news_items
+
+            soup = BeautifulSoup(resp.text, "html.parser")
+
+            # 解析搜狗新闻搜索结果
+            result_items = soup.select("div.news-list li") or soup.select("div.results div.vrwrap")
+
+            for item in result_items[:MAX_NEWS_PER_INDUSTRY]:
+                try:
+                    title_tag = item.select_one("h3 a") or item.select_one("a[href]")
+                    if not title_tag:
+                        continue
+
+                    title = title_tag.get_text(strip=True)
+                    url = title_tag.get("href", "")
+
+                    title = re.sub(r'<[^>]+>', '', title).strip()
+
+                    if not title or len(title) < 4 or not url:
+                        continue
+
+                    summary_tag = item.select_one("p.txt-info") or item.select_one("div.news-detail")
+                    summary = summary_tag.get_text(strip=True) if summary_tag else ""
+                    summary = re.sub(r'<[^>]+>', '', summary)[:200]
+
+                    source_tag = item.select_one("p.news-from span") or item.select_one("span.news-from")
+                    source_text = source_tag.get_text(strip=True) if source_tag else "搜狗新闻"
+
+                    news_item = NewsItem(
+                        title=title,
+                        url=url,
+                        source=source_text,
+                        industry=industry,
+                        summary=summary,
+                    )
+                    news_items.append(news_item)
+                except Exception as e:
+                    logger.debug(f"解析搜狗新闻条目失败: {e}")
+                    continue
+
+        except requests.RequestException as e:
+            logger.error(f"搜狗新闻请求异常: {e}")
 
         return news_items
 
