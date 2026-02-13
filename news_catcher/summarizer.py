@@ -11,6 +11,7 @@ Industry Summarizer - Uses LLM to generate concise industry briefings
 """
 
 import logging
+import re
 from datetime import datetime
 
 from openai import OpenAI
@@ -72,18 +73,46 @@ def _summarize_with_llm(industry: str, news_items: list[NewsItem]) -> str:
 
     client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
 
-    response = client.chat.completions.create(
-        model=LLM_MODEL,
-        messages=[
+    # 构建请求参数（部分模型如 Kimi K2.5 不支持自定义 temperature）
+    create_kwargs = {
+        "model": LLM_MODEL,
+        "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        temperature=0.3,
-        max_tokens=500,
-    )
+        "max_tokens": 500,
+    }
 
-    summary = response.choices[0].message.content.strip()
+    # Kimi K2.5 是思考模型：仅允许 temperature=1，需要更多 token 空间
+    model_lower = LLM_MODEL.lower()
+    is_thinking_model = ("kimi" in model_lower and "k2" in model_lower)
+
+    if is_thinking_model:
+        create_kwargs["temperature"] = 1.0
+        create_kwargs["max_tokens"] = 2048  # 思考过程+回答需要更多空间
+    else:
+        create_kwargs["temperature"] = 0.3
+
+    response = client.chat.completions.create(**create_kwargs)
+
+    raw_content = response.choices[0].message.content or ""
+
+    # Kimi K2.5 等思考模型会在回复中包含 <think>...</think> 标签
+    # 需要去除思考过程，只保留最终输出
+    summary = _clean_thinking_tags(raw_content)
     return summary
+
+
+def _clean_thinking_tags(text: str) -> str:
+    """清除 LLM 返回内容中的思考标签（<think>...</think>）"""
+    # 移除 <think>...</think> 块（可能跨多行）
+    cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    # 移除可能残留的未闭合 <think> 标签
+    cleaned = re.sub(r'<think>.*', '', cleaned, flags=re.DOTALL)
+    # 移除 markdown 代码块包裹（部分模型会把结果放在代码块里）
+    cleaned = re.sub(r'^```[a-z]*\n?', '', cleaned.strip(), flags=re.MULTILINE)
+    cleaned = re.sub(r'\n?```$', '', cleaned.strip(), flags=re.MULTILINE)
+    return cleaned.strip()
 
 
 def _summarize_fallback(industry: str, news_items: list[NewsItem]) -> str:

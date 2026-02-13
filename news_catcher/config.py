@@ -121,11 +121,12 @@ TIMEZONE = "Asia/Shanghai"
 # 支持所有兼容 OpenAI API 格式的服务：DeepSeek / Moonshot / OpenAI / 智谱 等
 # 默认使用 DeepSeek（性价比高、中文能力强）
 
-LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
-LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.deepseek.com")  # DeepSeek
-LLM_MODEL = os.environ.get("LLM_MODEL", "deepseek-chat")
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "sk-FSQ8haMdhp8Yaq8SDGpFJNv8ZzgNjE0BxWXtK4m9IXatUJTg")
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.moonshot.cn/v1")  # Kimi (Moonshot)
+LLM_MODEL = os.environ.get("LLM_MODEL", "kimi-k2.5")
 
 # 常见配置示例：
+#   Kimi:       LLM_BASE_URL=https://api.moonshot.cn/v1       LLM_MODEL=kimi-k2.5
 #   DeepSeek:   LLM_BASE_URL=https://api.deepseek.com         LLM_MODEL=deepseek-chat
 #   Moonshot:   LLM_BASE_URL=https://api.moonshot.cn/v1       LLM_MODEL=moonshot-v1-8k
 #   OpenAI:     LLM_BASE_URL=https://api.openai.com/v1        LLM_MODEL=gpt-4o-mini
