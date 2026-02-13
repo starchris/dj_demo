@@ -1,0 +1,15 @@
+# 企业经营洞察与招聘预算分析 Agent - 依赖包
+# Business Intelligence & Recruitment Budget Analysis Agent Dependencies
+
+# Django Web 框架（项目使用 3.x 语法）
+django>=3.2,<4.0
+
+# HTTP 请求
+requests>=2.31.0
+
+# HTML 解析（搜索结果提取）
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+
+# OpenAI 兼容 API 客户端（支持 Kimi/DeepSeek/OpenAI/智谱等）
+openai>=1.0.0

@@ -1,4 +1,5 @@
 from django.conf.urls import url
+from django.urls import path, include
 from django.conf import settings
 from . import view
 from django.views.static import serve
@@ -19,5 +20,8 @@ urlpatterns = [
     url('^loop_tables_clickhouse/(?P<table_name>.*)$', view.loop_tables_clickhouse),
     url('^t_lag$', view.t_lag),
     url('^loop_feature/(?P<table_name>.*)$', view.loop_feature),
+
+    # 企业经营洞察与招聘预算分析 Agent - 飞书机器人接口
+    path('', include('biz_intel_agent.urls')),
 ]
 urlpatterns += staticfiles_urlpatterns()
