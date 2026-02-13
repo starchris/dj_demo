@@ -1,9 +1,9 @@
 name: 热点新闻捕捉器 - 每日定时推送
 
 on:
-  # 每天北京时间 8:30 自动执行（UTC 0:30）
+  # 工作日北京时间 9:30 自动执行（UTC 1:30，周一至周五）
   schedule:
-    - cron: '30 0 * * *'
+    - cron: '30 1 * * 1-5'
 
   # 也支持手动触发（在 GitHub Actions 页面点 "Run workflow"）
   workflow_dispatch:

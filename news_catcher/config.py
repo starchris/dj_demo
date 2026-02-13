@@ -107,8 +107,8 @@ RSS_FEEDS = {
 # Scheduling Configuration
 # ============================================================
 
-# 每日执行时间（24小时制）
-SCHEDULE_HOUR = 8
+# 每日执行时间（24小时制，北京时间）
+SCHEDULE_HOUR = 9
 SCHEDULE_MINUTE = 30
 
 # 时区
