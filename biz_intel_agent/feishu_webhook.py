@@ -113,14 +113,60 @@ class FeishuWebhookSender:
 
     def send_report(self, company_name: str, report: str) -> bool:
         """
-        以飞书交互卡片格式发送企业分析报告
+        发送双报告到飞书（完整报告 + 销售简报）
 
-        将 Markdown 格式的报告转换为飞书卡片消息，
-        按 ## 二级标题分段，支持表格和列表的富文本展示。
+        如果 report 包含分隔符 "---"，则拆分为两张卡片：
+        1. 完整招聘预算分析报告（蓝色卡片）
+        2. 销售简报（橙色卡片，30秒速览）
 
         Args:
             company_name: 公司名称
-            report: Markdown 格式的分析报告
+            report: Markdown 格式的双报告（用 --- 分隔）
+
+        Returns:
+            是否发送成功
+        """
+        # 尝试拆分双报告
+        parts = report.split("\n\n---\n\n", 1)
+        full_report = parts[0]
+        sales_brief = parts[1] if len(parts) > 1 else ""
+
+        # 发送完整报告
+        success1 = self._send_report_card(
+            company_name, full_report,
+            header_text=f"📋 {company_name} - 完整招聘预算分析报告",
+            header_color="blue",
+            subtitle="数据来源：公开信息渠道（财报、投融资平台、招聘网站等）",
+        )
+
+        # 发送销售简报（如果有）
+        success2 = True
+        if sales_brief:
+            import time as _time
+            _time.sleep(1)  # 避免飞书限流
+            success2 = self._send_report_card(
+                company_name, sales_brief,
+                header_text=f"⚡ {company_name} - 销售简报（30秒速览）",
+                header_color="orange",
+                subtitle="关键数字 + 行动建议，适合快速决策",
+            )
+
+        return success1 and success2
+
+    def _send_report_card(
+        self, company_name: str, report_content: str,
+        header_text: str = "", header_color: str = "blue",
+        subtitle: str = "",
+    ) -> bool:
+        """
+        发送单张报告卡片
+
+        Args:
+            company_name: 公司名称
+            report_content: Markdown 报告内容
+            header_text: 卡片标题
+            header_color: 卡片颜色 (blue/orange/red/green)
+            subtitle: 副标题描述
 
         Returns:
             是否发送成功
@@ -128,20 +174,18 @@ class FeishuWebhookSender:
         elements = []
 
         # ── 头部摘要 ──
-        elements.append({
-            "tag": "div",
-            "text": {
-                "tag": "lark_md",
-                "content": (
-                    f"📊 以下为「**{company_name}**」的企业经营洞察与招聘预算分析报告\n"
-                    f"数据来源：公开信息渠道（财报、投融资平台、招聘网站等）"
-                ),
-            },
-        })
-        elements.append({"tag": "hr"})
+        if subtitle:
+            elements.append({
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"📊 {subtitle}",
+                },
+            })
+            elements.append({"tag": "hr"})
 
         # ── 报告正文（按 ## 分段） ──
-        sections = self._split_report_to_sections(report)
+        sections = self._split_report_to_sections(report_content)
         for section in sections:
             if section.strip():
                 elements.append({
@@ -161,7 +205,7 @@ class FeishuWebhookSender:
                     "tag": "plain_text",
                     "content": (
                         f"🕐 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-                        f" | 企业经营洞察与招聘预算分析 Agent"
+                        f" | 企业招聘预算分析 Agent"
                     ),
                 }
             ],
@@ -174,9 +218,9 @@ class FeishuWebhookSender:
                 "header": {
                     "title": {
                         "tag": "plain_text",
-                        "content": f"📋 {company_name} - 销售拓展洞察报告",
+                        "content": header_text or f"📋 {company_name} - 分析报告",
                     },
-                    "template": "blue",
+                    "template": header_color,
                 },
                 "elements": elements,
             },
