@@ -1,18 +1,19 @@
 # 企业经营洞察与招聘预算分析 Agent
 
-嵌入飞书的智能分析 Agent，用户在飞书中输入客户名称，自动采集企业经营信息并分析招聘预算，输出结构化的销售拓展洞察报告。
+基于飞书 Webhook 的智能分析 Agent。用户通过**网页**或 **API** 输入客户名称，Agent 自动采集企业经营信息并分析招聘预算，将结构化的报告卡片推送到**飞书群**。
+
+与 `news_catcher` 模块采用完全一致的飞书 Webhook 接入方式——只需在飞书群中添加一个自定义机器人，无需创建飞书开放平台应用，无需审批。
 
 ## 功能特性
 
-- **飞书机器人集成**：直接在飞书中与 Agent 对话，输入公司名称即可获取分析报告
-- **多维度信息采集**：自动从搜索引擎、新闻、招聘平台等公开渠道采集企业信息
-- **LLM 智能分析**：基于采集数据，由大语言模型生成专业的分析报告
-- **招聘预算分析**：重点分析企业招聘需求、薪资水平、人才缺口等信息
-- **飞书卡片消息**：以精美的飞书交互卡片形式展示报告，阅读体验好
+- **Webhook 推送**：通过飞书群自定义机器人 Webhook 推送分析报告卡片，配置简单
+- **网页表单**：访问 `/analyze` 页面，输入公司名称即可触发分析
+- **API 接口**：支持 `POST /api/analyze` 程序化调用
+- **命令行工具**：`python -m biz_intel_agent --analyze 公司名称` 直接在终端使用
+- **LLM 智能分析**：基于采集数据，由大语言模型生成专业分析报告
+- **联网搜索**：推荐使用 Kimi K2.5，支持联网搜索最新企业信息
 
 ## 分析维度
-
-基于 SKILL.md 定义的分析框架：
 
 | 维度 | 内容 |
 |------|------|
@@ -24,29 +25,40 @@
 ## 架构设计
 
 ```
-用户 (飞书) → 飞书开放平台 → Django 事件回调接口
-                                    ↓
-                              feishu_bot.py (事件处理)
-                                    ↓
-                              agent.py (分析引擎)
-                              ├── 模式A: LLM 联网搜索 (推荐，如 Kimi K2.5)
-                              └── 模式B: company_researcher.py 采集 → LLM 分析
-                                    ↓
-                              飞书卡片消息 → 用户 (飞书)
+                   ┌─────────────────────┐
+                   │   用户输入公司名称    │
+                   └─────────┬───────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              ▼              ▼              ▼
+        网页 /analyze    API /api/analyze   命令行 CLI
+              │              │              │
+              └──────────────┼──────────────┘
+                             ▼
+                    agent.py (分析引擎)
+                    ├── 模式A: LLM 联网搜索 (Kimi K2.5)
+                    └── 模式B: company_researcher 采集 → LLM 分析
+                             │
+                             ▼
+                  feishu_webhook.py (Webhook 推送)
+                             │
+                             ▼
+                     飞书群 (卡片消息)
 ```
 
 ### 模块说明
 
 | 文件 | 功能 |
 |------|------|
-| `config.py` | 配置管理（飞书凭证、LLM 参数、搜索配置） |
-| `feishu_bot.py` | 飞书机器人（事件接收、消息发送、卡片消息） |
+| `config.py` | 配置管理（Webhook URL、LLM 参数、搜索配置） |
+| `feishu_webhook.py` | 飞书 Webhook 发送（文本消息、报告卡片、状态通知） |
 | `company_researcher.py` | 企业信息采集（搜索引擎、新闻、招聘信息） |
 | `agent.py` | 核心分析引擎（LLM 分析、报告生成） |
-| `views.py` | Django 视图（HTTP 接口） |
+| `views.py` | Django 视图（网页表单 + API 接口） |
 | `urls.py` | URL 路由配置 |
+| `__main__.py` | 命令行工具 |
 
-## 部署步骤
+## 快速开始
 
 ### 1. 安装依赖
 
@@ -54,100 +66,120 @@
 pip install -r biz_intel_agent/requirements.txt
 ```
 
-### 2. 创建飞书应用
+### 2. 在飞书群添加自定义机器人
 
-1. 访问 [飞书开放平台](https://open.feishu.cn/app) 创建一个企业自建应用
-2. 在"应用能力"中开启 **机器人** 能力
-3. 在"事件订阅"中：
-   - 设置请求地址为: `https://<your-domain>/api/feishu/event`
-   - 添加事件: `im.message.receive_v1`（接收消息）
-4. 在"权限管理"中，开通以下权限：
-   - `im:message`（获取与发送单聊、群组消息）
-   - `im:message:send_as_bot`（以应用的身份发送消息）
-5. 发布应用版本并完成审批
+1. 打开飞书，进入一个群聊
+2. 点击群设置 → 群机器人 → 添加机器人 → **自定义机器人**
+3. 填写机器人名称（如"企业分析助手"）
+4. 复制 **Webhook 地址**（格式：`https://open.feishu.cn/open-apis/bot/v2/hook/xxxxx`）
+5. 如需安全校验，可开启"签名校验"并记下密钥
 
 ### 3. 配置环境变量
 
 ```bash
-# 飞书应用凭证（必填）
-export FEISHU_APP_ID="cli_xxxxx"
-export FEISHU_APP_SECRET="xxxxx"
-export FEISHU_VERIFICATION_TOKEN="xxxxx"
+# 飞书 Webhook（必填）
+export FEISHU_WEBHOOK_URL="https://open.feishu.cn/open-apis/bot/v2/hook/xxxxx"
 
-# 飞书事件加密密钥（可选）
-export FEISHU_ENCRYPT_KEY=""
-
-# LLM API 配置（必填）
-# 推荐使用 Kimi K2.5（支持联网搜索，效果最佳）
+# LLM API（必填，推荐 Kimi K2.5）
 export LLM_API_KEY="sk-xxxxx"
 export LLM_BASE_URL="https://api.moonshot.cn/v1"
 export LLM_MODEL="kimi-k2.5"
-
-# 其他 LLM 选项：
-# DeepSeek:
-#   export LLM_BASE_URL="https://api.deepseek.com"
-#   export LLM_MODEL="deepseek-chat"
-# OpenAI:
-#   export LLM_BASE_URL="https://api.openai.com/v1"
-#   export LLM_MODEL="gpt-4o-mini"
 ```
 
-### 4. 启动服务
+### 4. 测试 Webhook 连接
 
 ```bash
+python -m biz_intel_agent --test-webhook
+```
+
+如果飞书群收到了测试消息，说明配置正确。
+
+### 5. 使用
+
+有三种使用方式：
+
+#### 方式一：命令行
+
+```bash
+# 分析并推送到飞书群
+python -m biz_intel_agent --analyze 腾讯
+
+# 仅在终端展示（不推送飞书）
+python -m biz_intel_agent --analyze 字节跳动 --no-feishu
+
+# 仅采集公开信息（不调用 LLM）
+python -m biz_intel_agent --research 宁德时代
+```
+
+#### 方式二：网页表单
+
+```bash
+# 启动 Django 服务
 python manage.py runserver 0.0.0.0:80
+
+# 浏览器访问
+open http://localhost/analyze
 ```
 
-### 5. 验证
+在页面输入公司名称，点击"开始分析"，报告会推送到飞书群。
 
-- 健康检查: `curl http://localhost/api/feishu/health`
-- 在飞书中找到你的机器人，发送一个公司名称（如"腾讯"），等待分析报告返回
+#### 方式三：API 调用
 
-## 使用方法
+```bash
+# 异步分析（立即返回，结果推送飞书）
+curl -X POST http://localhost/api/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"company": "腾讯"}'
 
-在飞书中与机器人对话：
-
-1. **私聊**：直接发送公司名称
-   - 示例：`腾讯`
-   - 示例：`字节跳动`
-
-2. **群聊**：@机器人 + 公司名称
-   - 示例：`@分析助手 宁德时代`
-
-3. **帮助**：发送 `帮助` 或 `help` 查看使用说明
-
-## 输出示例
-
-```
-📋 腾讯公司 - 销售拓展洞察报告
-
-┌─────────────────────────────────────┐
-│ 核心客户信息                         │
-├──────────────┬──────────────────────┤
-│ 公司规模      │ 约10万人              │
-│ 财务状况      │ 2024年营收6603亿元    │
-│ 核心业务      │ 社交、游戏、金融科技   │
-│ 近期重大成果  │ AI大模型发布、海外扩张 │
-├──────────────┴──────────────────────┤
-│ 招聘与预算分析                       │
-├──────────────┬──────────────────────┤
-│ 在招职位数量  │ 500+ 个               │
-│ 重点招聘部门  │ AI研发、国际化业务     │
-│ 招聘预算评估  │ 预算充足，高薪岗位多   │
-│ 人才缺口      │ 算法工程师、产品经理   │
-└──────────────┴──────────────────────┘
+# 同步分析（等待结果返回）
+curl -X POST http://localhost/api/analyze/sync \
+  -H "Content-Type: application/json" \
+  -d '{"company": "腾讯", "send_feishu": true}'
 ```
 
 ## API 接口
 
 | 接口 | 方法 | 说明 |
 |------|------|------|
-| `/api/feishu/event` | POST | 飞书事件订阅回调 |
+| `/analyze` | GET | 网页表单页面 |
+| `/analyze` | POST | 提交分析请求（异步） |
+| `/api/analyze` | POST | JSON API，异步分析 |
+| `/api/analyze/sync` | POST | JSON API，同步返回结果 |
 | `/api/feishu/health` | GET | 健康检查 |
+
+## 飞书卡片效果
+
+分析完成后，飞书群中会收到一张精美的交互卡片：
+
+```
+┌──────────────────────────────────────────┐
+│ 📋 腾讯公司 - 销售拓展洞察报告             │
+├──────────────────────────────────────────┤
+│ 📊 以下为「腾讯公司」的企业经营洞察...      │
+├──────────────────────────────────────────┤
+│ ## 核心客户信息                            │
+│ | 公司规模 | 约10万人 |                    │
+│ | 财务状况 | 2024年营收6603亿元 |          │
+│ | 核心业务 | 社交、游戏、金融科技 |          │
+├──────────────────────────────────────────┤
+│ ## 招聘与预算分析                          │
+│ | 在招职位 | 500+ 个 |                    │
+│ | 薪资水平 | 核心岗位月薪3-8万 |           │
+│ | 人才缺口 | 算法工程师、产品经理 |          │
+├──────────────────────────────────────────┤
+│ ## 业务发展方向                            │
+│ - 战略重点：AI大模型、国际化               │
+├──────────────────────────────────────────┤
+│ ## 销售策略建议                            │
+│ - 接触点：HR VP、技术总监                  │
+├──────────────────────────────────────────┤
+│ 🕐 2025-02-13 12:00:00 | Agent           │
+└──────────────────────────────────────────┘
+```
 
 ## 技术栈
 
-- **后端框架**: Django
+- **后端框架**: Django 3.2
 - **LLM**: Kimi K2.5 / DeepSeek / OpenAI（兼容 OpenAI API 格式）
-- **信息采集**: BeautifulSoup + Requests
-- **飞书集成**: 飞书开放平台 API v2
+- **信息采集**: BeautifulSoup + Requests（百度搜索 + 百度新闻）
+- **飞书集成**: 自定义机器人 Webhook（与 news_catcher 一致）

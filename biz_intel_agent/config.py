@@ -2,29 +2,28 @@
 配置文件 - 企业经营洞察与招聘预算分析 Agent
 Configuration for Business Intelligence Agent
 
-飞书机器人配置 + LLM 配置 + 搜索配置
+飞书 Webhook 配置 + LLM 配置 + 搜索配置
+
+与 news_catcher 模块采用相同的 Webhook 方式接入飞书，
+只需在飞书群中添加"自定义机器人"即可，无需创建飞书开放平台应用。
 """
 
 import os
 
 # ============================================================
-# 飞书应用配置 (Feishu/Lark App Configuration)
+# 飞书 Webhook 配置（与 news_catcher 保持一致的接入方式）
+# Feishu Webhook Configuration
 # ============================================================
-# 在飞书开放平台创建应用后获取: https://open.feishu.cn/app
-# 需要开启"机器人"能力，并配置事件订阅
+# 在飞书群聊中添加"自定义机器人"，获取 Webhook URL
+# 步骤：群设置 → 群机器人 → 添加机器人 → 自定义机器人
 
-# 飞书应用凭证
-FEISHU_APP_ID = os.environ.get("FEISHU_APP_ID", "")
-FEISHU_APP_SECRET = os.environ.get("FEISHU_APP_SECRET", "")
+FEISHU_WEBHOOK_URL = os.environ.get(
+    "FEISHU_WEBHOOK_URL",
+    ""  # 通过环境变量配置，格式: https://open.feishu.cn/open-apis/bot/v2/hook/xxxxx
+)
 
-# 飞书事件订阅验证 Token（在"事件订阅"页面获取）
-FEISHU_VERIFICATION_TOKEN = os.environ.get("FEISHU_VERIFICATION_TOKEN", "")
-
-# 飞书事件订阅加密密钥（可选，在"事件订阅"页面设置）
-FEISHU_ENCRYPT_KEY = os.environ.get("FEISHU_ENCRYPT_KEY", "")
-
-# 飞书 API 基础地址
-FEISHU_API_BASE = "https://open.feishu.cn/open-apis"
+# 飞书 Webhook 签名密钥（可选，在自定义机器人设置中的"安全设置"开启签名校验后获取）
+FEISHU_WEBHOOK_SECRET = os.environ.get("FEISHU_WEBHOOK_SECRET", "")
 
 # ============================================================
 # LLM 配置（用于企业分析报告生成）
