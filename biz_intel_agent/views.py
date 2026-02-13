@@ -190,21 +190,70 @@ def api_analyze_sync(request):
         }, status=500)
 
 
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_upload_csv(request):
+    """
+    上传 CSV 客户职位信息文件
+
+    POST /api/upload-csv
+    Content-Type: multipart/form-data
+    Body: file=<csv_file>
+
+    将上传的 CSV 文件保存到 biz_intel_agent/data/ 目录，
+    后续分析会自动读取该文件中的精确招聘数据。
+    """
+    csv_file = request.FILES.get("file")
+    if not csv_file:
+        return JsonResponse({"success": False, "message": "请上传 CSV 文件"}, status=400)
+
+    if not csv_file.name.endswith('.csv'):
+        return JsonResponse({"success": False, "message": "仅支持 .csv 格式文件"}, status=400)
+
+    try:
+        from .config import CSV_FILE_PATH
+        import os
+
+        # 确保目录存在
+        os.makedirs(os.path.dirname(CSV_FILE_PATH), exist_ok=True)
+
+        # 保存文件
+        with open(CSV_FILE_PATH, 'wb') as f:
+            for chunk in csv_file.chunks():
+                f.write(chunk)
+
+        # 验证文件内容
+        from .csv_analyzer import CSVAnalyzer
+        analyzer = CSVAnalyzer(CSV_FILE_PATH)
+        companies = analyzer.list_companies(limit=10)
+
+        logger.info(f"CSV 文件上传成功: {csv_file.name}, 包含客户: {companies}")
+
+        return JsonResponse({
+            "success": True,
+            "message": f"CSV 文件上传成功（{csv_file.name}）",
+            "companies_sample": companies,
+        })
+    except Exception as e:
+        logger.error(f"CSV 上传失败: {e}")
+        return JsonResponse({"success": False, "message": f"上传失败: {str(e)}"}, status=500)
+
+
 @require_http_methods(["GET"])
 def health_check(request):
     """
     健康检查接口
 
     GET /api/feishu/health
-
-    返回服务状态和配置信息
     """
     from .config import (
         FEISHU_WEBHOOK_URL,
         LLM_API_KEY,
         LLM_MODEL,
         LLM_BASE_URL,
+        CSV_FILE_PATH,
     )
+    import os
 
     status = {
         "status": "ok",
@@ -214,6 +263,8 @@ def health_check(request):
         "llm_configured": bool(LLM_API_KEY),
         "llm_model": LLM_MODEL,
         "llm_base_url": LLM_BASE_URL,
+        "csv_configured": os.path.exists(CSV_FILE_PATH) if CSV_FILE_PATH else False,
+        "csv_path": CSV_FILE_PATH,
     }
 
     return JsonResponse(status)

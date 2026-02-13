@@ -27,6 +27,9 @@ urlpatterns = [
     # JSON API - 同步分析（直接返回结果）
     path("api/analyze/sync", views.api_analyze_sync, name="api_analyze_sync"),
 
+    # CSV 文件上传
+    path("api/upload-csv", views.api_upload_csv, name="upload_csv"),
+
     # 健康检查
     path("api/feishu/health", views.health_check, name="health_check"),
 ]

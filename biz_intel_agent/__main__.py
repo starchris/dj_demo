@@ -125,11 +125,12 @@ def cmd_test_webhook():
 
 def main():
     parser = argparse.ArgumentParser(
-        description="📊 企业经营洞察与招聘预算分析 Agent",
+        description="📊 企业招聘预算分析 Agent",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
   python -m biz_intel_agent --analyze 腾讯              # 分析并推送到飞书群
+  python -m biz_intel_agent --analyze 银河通用 --csv data.csv   # 指定 CSV 数据源
   python -m biz_intel_agent --analyze 字节跳动 --no-feishu  # 仅在终端展示
   python -m biz_intel_agent --research 宁德时代         # 仅采集公开信息
   python -m biz_intel_agent --test-webhook              # 测试飞书 Webhook
@@ -140,6 +141,7 @@ def main():
   LLM_API_KEY            LLM API 密钥（必填）
   LLM_BASE_URL           LLM API 地址（默认 Kimi）
   LLM_MODEL              LLM 模型名（默认 kimi-k2.5）
+  CSV_FILE_PATH          客户职位信息 CSV 文件路径（可选）
         """,
     )
 
@@ -153,9 +155,16 @@ def main():
 
     parser.add_argument("--no-feishu", action="store_true",
                         help="不推送到飞书（仅在终端展示）")
+    parser.add_argument("--csv", type=str, metavar="CSV文件路径",
+                        help="指定客户职位信息 CSV 文件路径")
 
     args = parser.parse_args()
     setup_logging()
+
+    # 如果指定了 CSV 文件，设置环境变量
+    if args.csv:
+        import os
+        os.environ["CSV_FILE_PATH"] = os.path.abspath(args.csv)
 
     if args.analyze:
         exit_code = cmd_analyze(args.analyze, send_feishu=not args.no_feishu)

@@ -23,6 +23,7 @@ from openai import OpenAI
 
 from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 from .company_researcher import CompanyResearcher
+from .csv_analyzer import CSVAnalyzer
 
 logger = logging.getLogger("biz_intel_agent.agent")
 
@@ -340,10 +341,13 @@ class BusinessIntelAgent:
         self.model = LLM_MODEL
         self.use_search = _is_search_capable_model(self.model)
         self.researcher = CompanyResearcher()
+        self.csv_analyzer = CSVAnalyzer()
 
+        csv_status = "已加载" if self.csv_analyzer.is_available else "未配置"
         logger.info(
             f"BusinessIntelAgent 初始化完成 "
-            f"(model={self.model}, mode={'联网搜索' if self.use_search else '采集+分析'})"
+            f"(model={self.model}, mode={'联网搜索' if self.use_search else '采集+分析'}, "
+            f"CSV={csv_status})"
         )
 
     def analyze(self, company_name: str) -> str:
@@ -489,14 +493,21 @@ class BusinessIntelAgent:
         return _clean_thinking_tags(raw_content)
 
     def _analyze_with_research(self, company_name: str) -> str:
-        """模式B: 手动采集 + LLM 分析"""
+        """
+        模式B: 网络采集 + CSV数据 + LLM 分析
+
+        三步流程：
+        1. 网络采集：通过搜索引擎获取企业背景、融资、新闻等定性信息
+        2. CSV分析：从内部客户职位数据库获取精确的招聘数据（渠道/薪资/HR预算）
+        3. LLM合成：将两个数据源的信息合并，生成完整分析报告
+        """
         logger.info(f"使用采集+分析模式处理「{company_name}」")
 
-        # Step 1: 采集企业信息
+        # Step 1: 网络采集企业信息（定性数据）
         research_data = self.researcher.research(company_name)
 
         if not research_data.has_data:
-            logger.warning(f"「{company_name}」未采集到有效信息")
+            logger.warning(f"「{company_name}」网络采集未获取到有效信息")
             research_text = (
                 f"未能从搜索引擎采集到「{company_name}」的相关信息。"
                 f"请基于你的知识库进行分析，并明确标注需要确认的信息。"
@@ -504,10 +515,36 @@ class BusinessIntelAgent:
         else:
             research_text = research_data.to_prompt_text()
 
-        # Step 2: LLM 分析生成完整报告
+        # Step 2: CSV 分析招聘数据（定量数据）
+        csv_text = ""
+        if self.csv_analyzer.is_available:
+            logger.info(f"  📊 正在分析 CSV 招聘数据...")
+            csv_result = self.csv_analyzer.analyze(company_name)
+            if csv_result.found:
+                csv_text = csv_result.to_prompt_text()
+                logger.info(
+                    f"  CSV 数据: {csv_result.total_positions}个职位, "
+                    f"总预算{csv_result.total_budget:.1f}万, "
+                    f"HR预算{csv_result.total_hr_budget:.1f}万"
+                )
+            else:
+                logger.info(f"  CSV 中未找到「{company_name}」的数据")
+        else:
+            logger.info(f"  CSV 文件未配置，跳过内部数据分析")
+
+        # Step 3: 合并两个数据源
+        combined_data = research_text
+        if csv_text:
+            combined_data += "\n\n" + csv_text
+            combined_data += (
+                "\n\n> **重要提示**：上方「内部招聘数据分析」部分包含精确的渠道分布、薪资预算、"
+                "HR潜在预算数据，在报告中请优先使用这些数据，而非估算值。\n"
+            )
+
+        # Step 4: LLM 分析生成完整报告
         user_prompt = FULL_REPORT_PROMPT.format(
             company_name=company_name,
-            research_data=research_text,
+            research_data=combined_data,
         )
 
         create_kwargs = {
