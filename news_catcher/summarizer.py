@@ -30,23 +30,26 @@ SYSTEM_PROMPT = """你是一位资深的产业研究分析师，擅长从新闻�
 
 写作要求：
 1. 用 3~6 个要点概括当前行业最值得关注的动态，每个要点一行，以「·」开头
-2. 要点应涵盖以下维度（有则写，无则跳过）：
+2. **🔥 投融资/IPO 事件必须排在最前面、重点突出**：如果有投融资或 IPO 事件，
+   用「🔥」标记开头，保留公司名、轮次、金额等关键数字
+3. 要点应涵盖以下维度（有则写，无则跳过，投融资/IPO 优先级最高）：
+   - 🔥 投融资事件（金额、轮次、投资方）— 最优先
+   - 🔥 IPO / 上市动态（估值、市值）— 最优先
    - 重点企业 / 新兴企业的关键动作
-   - 投融资事件（金额、轮次、投资方）
    - 新产品发布、技术突破
    - 市场趋势、行业数据
    - 政策法规、标准制定
-   - 重要人事变动、组织调整
-3. 每个要点控制在 30~60 字，点到为止，不要展开论述
-4. 提及具体企业名、数字、产品名时要保留，这些是信息密度的核心
-5. 如果新闻内容不足以提炼有价值的要点，就据实总结，不要编造
-6. 直接输出要点列表，不要输出标题、前言、总结性段落"""
+4. 每个要点控制在 30~60 字，点到为止，不要展开论述
+5. 提及具体企业名、数字、产品名时要保留，这些是信息密度的核心
+6. 如果新闻内容不足以提炼有价值的要点，就据实总结，不要编造
+7. 直接输出要点列表，不要输出标题、前言、总结性段落"""
 
 USER_PROMPT_TEMPLATE = """以下是【{industry}】行业今日抓取的 {count} 条新闻：
 
 {news_text}
-
-请根据以上新闻，输出该行业今日动态要点总结（3~6 个要点，以「·」开头）："""
+{funding_text}
+请根据以上信息，输出该行业今日动态要点总结（3~6 个要点，以「·」开头）。
+如有投融资/IPO 事件，必须排在最前面并用🔥标记："""
 
 
 def _build_news_text(news_items: list[NewsItem]) -> str:
@@ -62,13 +65,36 @@ def _build_news_text(news_items: list[NewsItem]) -> str:
     return "\n\n".join(lines)
 
 
-def _summarize_with_llm(industry: str, news_items: list[NewsItem]) -> str:
-    """调用 LLM 生成单个行业的动态总结"""
+def _build_funding_text(funding_events: list) -> str:
+    """将投融资事件格式化为 LLM 输入文本（需重点关注）"""
+    if not funding_events:
+        return ""
+    lines = ["\n⚠️ 以下是该行业近期重要投融资/IPO事件（请重点关注并优先总结）："]
+    for evt in funding_events:
+        line = f"🔥 {evt.company}"
+        if evt.event_type == "IPO":
+            line += " IPO"
+        if evt.round and evt.event_type != "IPO":
+            line += f" 完成{evt.round}"
+        if evt.amount:
+            line += f"（{evt.amount}）"
+        line += f"\n   标题：{evt.title}"
+        if evt.publish_time:
+            line += f"\n   时间：{evt.publish_time}"
+        lines.append(line)
+    return "\n\n".join(lines)
+
+
+def _summarize_with_llm(industry: str, news_items: list[NewsItem],
+                         funding_events: list = None) -> str:
+    """调用 LLM 生成单个行业的动态总结（含投融资高亮）"""
     news_text = _build_news_text(news_items)
+    funding_text = _build_funding_text(funding_events or [])
     user_prompt = USER_PROMPT_TEMPLATE.format(
         industry=industry,
         count=len(news_items),
         news_text=news_text,
+        funding_text=funding_text,
     )
 
     client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
@@ -115,12 +141,20 @@ def _clean_thinking_tags(text: str) -> str:
     return cleaned.strip()
 
 
-def _summarize_fallback(industry: str, news_items: list[NewsItem]) -> str:
+def _summarize_fallback(industry: str, news_items: list[NewsItem],
+                        funding_events: list = None) -> str:
     """
     回退方案：当 LLM 不可用时，基于新闻标题生成简要总结
-    直接列出新闻标题要点，不做智能摘要
+    投融资事件排在最前面，用🔥标记高亮
     """
     lines = []
+
+    # 先展示投融资事件（高亮）
+    if funding_events:
+        for evt in funding_events:
+            lines.append(f"🔥 {evt.highlight_text()}")
+
+    # 再列出新闻标题
     for item in news_items[:5]:
         title = item.title.strip()
         if len(title) > 50:
@@ -132,18 +166,21 @@ def _summarize_fallback(industry: str, news_items: list[NewsItem]) -> str:
 
 def generate_summaries(
     news_by_industry: dict[str, list[NewsItem]],
+    funding_by_industry: dict = None,
 ) -> dict[str, str]:
     """
-    为每个行业生成动态总结
+    为每个行业生成动态总结（含投融资高亮）
 
     Args:
         news_by_industry: {行业名: [NewsItem, ...]}
+        funding_by_industry: {行业名: [FundingEvent, ...]}  可选
 
     Returns:
         {行业名: "总结文本"}  每个行业一段 3~6 行的要点总结
     """
     summaries: dict[str, str] = {}
     use_llm = bool(LLM_API_KEY)
+    funding_by_industry = funding_by_industry or {}
 
     if not use_llm:
         logger.warning(
@@ -155,13 +192,15 @@ def generate_summaries(
             continue
 
         emoji = INDUSTRIES.get(industry, {}).get("emoji", "📰")
-        logger.info(f"  {emoji} 正在总结 [{industry}] ...")
+        funding_events = funding_by_industry.get(industry, [])
+        funding_hint = f"（含 {len(funding_events)} 条投融资）" if funding_events else ""
+        logger.info(f"  {emoji} 正在总结 [{industry}] {funding_hint}...")
 
         try:
             if use_llm:
-                summary = _summarize_with_llm(industry, news_items)
+                summary = _summarize_with_llm(industry, news_items, funding_events)
             else:
-                summary = _summarize_fallback(industry, news_items)
+                summary = _summarize_fallback(industry, news_items, funding_events)
 
             summaries[industry] = summary
             logger.info(f"  {emoji} [{industry}] 总结完成")
@@ -170,7 +209,7 @@ def generate_summaries(
             logger.error(f"  [{industry}] 总结生成失败: {e}")
             # LLM 失败时回退
             try:
-                summaries[industry] = _summarize_fallback(industry, news_items)
+                summaries[industry] = _summarize_fallback(industry, news_items, funding_events)
                 logger.info(f"  [{industry}] 已使用回退方案生成摘要")
             except Exception as e2:
                 logger.error(f"  [{industry}] 回退方案也失败: {e2}")
