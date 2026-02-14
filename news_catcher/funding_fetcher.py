@@ -280,10 +280,12 @@ class FundingFetcher:
     def _parse_amount(title: str) -> str:
         """从标题中提取金额"""
         amount_patterns = [
-            r'([\d.]+\s*亿[美元人民币]*)',
             r'(超[\d.]+\s*亿[美元人民币]*)',
             r'(近[\d.]+\s*亿[美元人民币]*)',
+            r'(近[十百千]\s*亿[美元人民币]*)',
+            r'([\d.]+\s*亿[美元人民币]*)',
             r'(数[千百十]万[美元人民币]*)',
+            r'(数千万)',
             r'([\d.]+\s*万[美元人民币]*)',
             r'(市值[\d.]+\s*亿)',
         ]
@@ -296,25 +298,45 @@ class FundingFetcher:
     @staticmethod
     def _parse_ipo_company(title: str) -> str:
         """从IPO标题中提取公司名"""
-        # 模式: "XXX要IPO了" / "XXX敲钟" / "XXX上市"
+        # 模式1: 「公司名」
+        m = re.search(r'[「"](.*?)[」"]', title)
+        if m and len(m.group(1)) >= 2:
+            return m.group(1)
+
+        # 模式2: "XXX要IPO了" / "XXX敲钟" / "XXX上市" / "XXX赴港"
         patterns = [
-            r'[，,](.{2,10}?)(?:要IPO|IPO|敲钟|上市|赴港)',
-            r'^(.{2,15}?)(?:要IPO|IPO|敲钟|上市|赴港)',
-            r'[「"](.*?)[」"]',
-            r'投出.*?(?:的)?(.{2,10}?)(?:IPO|上市|敲钟)',
+            # "昆仑芯赴港上市" -> 昆仑芯（优先匹配标题开头的赴X上市）
+            r'^(.{2,8}?)(?:赴港|赴美|赴纽)',
+            # "今天智谱IPO敲锣" -> 智谱
+            r'今[天日]\s*(.{2,6}?)(?:IPO|上市|敲)',
+            # "护家科技要IPO了" -> 护家科技
+            r'[，,]\s*(.{2,10}?)(?:要IPO|IPO了|赴港上市|要上市)',
+            # "鸣鸣很忙敲钟" -> 鸣鸣很忙
+            r'[，,]\s*(.{2,10}?)(?:敲[钟锣])',
+            # "电科蓝天市值1000亿" -> 电科蓝天
+            r'[，,]\s*(.{2,8}?)(?:市值)',
+            # "北芯生命暴涨200%" -> 北芯生命
+            r'[：:]\s*(.{2,8}?)(?:暴涨|上涨|大涨|市值)',
         ]
         for pattern in patterns:
             m = re.search(pattern, title)
             if m:
                 name = m.group(1).strip()
-                # 清理
-                name = re.sub(r'^(今[天年]|首个|航天)', '', name).strip()
+                # 清理前缀修饰词
+                name = re.sub(r'^(今[天年]|首个|航天|医疗|科创板)', '', name).strip()
                 if len(name) >= 2:
                     return name
 
-        # 兜底: 取标题中的主要名词
-        # 匹配中英文公司名
-        m = re.search(r'([A-Za-z]+[\u4e00-\u9fff]*|[\u4e00-\u9fff]{2,6}(?:科技|智能|生命|医疗|芯片|半导体|新材料|能源|航天))', title)
+        # 兜底: 匹配常见公司名模式
+        m = re.search(
+            r'([\u4e00-\u9fff]{2,6}(?:科技|智能|生命|医疗|芯片|半导体|新材料|能源|航天|资本|比萨|集团))',
+            title,
+        )
+        if m:
+            return m.group(1)
+
+        # 匹配英文公司名
+        m = re.search(r'([A-Z][A-Za-z]{2,15})', title)
         if m:
             return m.group(1)
 
