@@ -73,10 +73,27 @@ MAX_SEARCH_RESULTS = 10
 # 可选列: 一级职能, 职位名称, 工作地点
 # 可通过环境变量或上传文件配置
 
-CSV_FILE_PATH = os.environ.get(
-    "CSV_FILE_PATH",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "客户职位信息.csv")
-)
+# 默认路径优先级：
+#   1. 环境变量 CSV_FILE_PATH（最高优先级）
+#   2. biz_intel_agent/data/客户职位信息.csv（通过 API 上传的位置）
+#   3. data/客户职位信息.csv（手动放置到仓库 data 目录）
+_CSV_CANDIDATE_PATHS = [
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "客户职位信息.csv"),
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "客户职位信息.csv"),
+]
+
+def _resolve_csv_path() -> str:
+    """按优先级查找可用的 CSV 文件路径"""
+    env_path = os.environ.get("CSV_FILE_PATH", "")
+    if env_path:
+        return env_path
+    for p in _CSV_CANDIDATE_PATHS:
+        if os.path.exists(p):
+            return os.path.abspath(p)
+    # 返回默认路径（即使不存在，运行时会 warning）
+    return _CSV_CANDIDATE_PATHS[0]
+
+CSV_FILE_PATH = _resolve_csv_path()
 
 # ============================================================
 # 日志配置
