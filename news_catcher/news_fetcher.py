@@ -11,6 +11,7 @@ News Fetcher Module - Fetch industry news from multiple sources
 
 import hashlib
 import logging
+import random
 import re
 import time
 from dataclasses import dataclass, field
@@ -31,8 +32,9 @@ from .config import (
     RSS_FEEDS,
 )
 
-# 新闻时效性：只保留最近 N 天内的新闻（默认 3 天）
-NEWS_MAX_AGE_DAYS = 3
+# 新闻时效性：只保留最近 N 天内的新闻（默认 7 天）
+# 对于量子科技、新材料等小众行业，7 天是合理的时效窗口
+NEWS_MAX_AGE_DAYS = 7
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +75,11 @@ class NewsFetcher:
         self.session.headers.update(DEFAULT_HEADERS)
         self.seen_uids: set = set()
 
+    @staticmethod
+    def _random_sleep(min_sec: float = 1.5, max_sec: float = 3.0):
+        """随机延迟，降低反爬检测风险"""
+        time.sleep(random.uniform(min_sec, max_sec))
+
     def fetch_all(self) -> dict[str, list[NewsItem]]:
         """
         抓取所有行业新闻
@@ -97,7 +104,7 @@ class NewsFetcher:
                 logger.warning(f"  [{industry}] 未获取到新闻")
 
             # 请求间隔，避免被反爬
-            time.sleep(1.5)
+            self._random_sleep(2.0, 4.0)
 
         logger.info(f"新闻抓取完成，共 {total_count} 条")
         return all_news
@@ -118,7 +125,7 @@ class NewsFetcher:
             logger.debug(f"  搜狗新闻获取到 {len(items)} 条")
         except Exception as e:
             logger.error(f"搜狗新闻抓取失败 [{keywords[0]}]: {e}")
-        time.sleep(1)
+        self._random_sleep(1.5, 3.0)
 
         # 方法2：百度新闻搜索
         for keyword in keywords[:2]:  # 每个行业最多使用前2个关键词
@@ -128,7 +135,7 @@ class NewsFetcher:
                 logger.debug(f"  百度新闻[{keyword}]获取到 {len(items)} 条")
             except Exception as e:
                 logger.error(f"百度新闻抓取失败 [{keyword}]: {e}")
-            time.sleep(1)
+            self._random_sleep(1.5, 3.0)
 
         # 方法3：Bing 新闻搜索（补充国际视角）
         try:
@@ -146,13 +153,11 @@ class NewsFetcher:
     def _fetch_from_baidu_news(self, keyword: str, industry: str) -> list[NewsItem]:
         """从百度新闻搜索抓取新闻（已适配百度改版后的页面结构）"""
         news_items = []
-        # 添加 bsst=1 按时间排序，bt/et 限制时间范围为最近 3 天
-        now = datetime.now()
-        bt = str(int((now - timedelta(days=NEWS_MAX_AGE_DAYS)).timestamp()))
-        et = str(int(now.timestamp()))
+        # 使用百度搜索新闻 Tab 的 URL（news.baidu.com 会 301 到此格式）
+        # rtt=4: 最近一周内; bsst=1: 按时间排序; cl=2 + tn=news: 新闻搜索
         search_url = (
-            f"https://news.baidu.com/ns?word={quote(keyword)}"
-            f"&tn=news&from=news&cl=2&rn=10&ct=1&bsst=1&bt={bt}&et={et}"
+            f"https://www.baidu.com/s?word={quote(keyword)}"
+            f"&rtt=4&bsst=1&cl=2&tn=news&rsv_dl=ns_pc"
         )
 
         try:
@@ -316,17 +321,27 @@ class NewsFetcher:
         return news_items
 
     def _fetch_from_sogou_news(self, keyword: str, industry: str) -> list[NewsItem]:
-        """从搜狗新闻搜索抓取新闻（补充源，按时间排序）"""
+        """从搜狗新闻搜索抓取新闻（时效性最好的源，按时间排序）"""
         news_items = []
         # sort=1 按时间排序（原 sort=0 为默认排序，无法保证时效性）
         search_url = f"https://news.sogou.com/news?query={quote(keyword)}&mode=1&sort=1"
 
         try:
-            resp = self.session.get(search_url, timeout=REQUEST_TIMEOUT)
+            # 搜狗反爬敏感，使用独立请求头降低检测
+            sogou_headers = {
+                **DEFAULT_HEADERS,
+                "Referer": "https://news.sogou.com/",
+            }
+            resp = self.session.get(search_url, timeout=REQUEST_TIMEOUT, headers=sogou_headers)
             resp.encoding = "utf-8"
 
             if resp.status_code != 200:
                 logger.warning(f"搜狗新闻请求失败: HTTP {resp.status_code}")
+                return news_items
+
+            # 检测反爬重定向
+            if "antispider" in resp.url:
+                logger.warning(f"搜狗新闻触发反爬机制，跳过: {keyword}")
                 return news_items
 
             soup = BeautifulSoup(resp.text, "html.parser")
@@ -505,6 +520,11 @@ class NewsFetcher:
 
             # "X个月前" 或 "X 个月" - 一定过期
             if re.search(r'\d+\s*个月', text):
+                return True
+
+            # "X年" 或 "X 年" (如 Bing 返回的 "1 年", "2 年")
+            # 仅匹配 1-2 位数字，避免误匹配 "2026年2月13日" 等完整日期
+            if re.search(r'(?<!\d)\d{1,2}\s*年(?!\d|月)', text):
                 return True
 
         # 无法判断日期时，保留新闻（宁可多不可少）
