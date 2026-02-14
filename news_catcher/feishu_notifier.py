@@ -89,52 +89,85 @@ class FeishuNotifier:
         self,
         news_by_industry: dict[str, list[NewsItem]],
         summaries: dict[str, str],
+        funding_by_industry: dict = None,
     ) -> bool:
         """
-        以交互卡片发送新闻 + 行业总结
+        以交互卡片发送新闻 + 行业总结 + 投融资高亮
 
         布局（每个行业）：
           ── 行业标题 ──
+          🔥 投融资/IPO 高亮（如有）
           📝 动态总结（3~6 行文字要点）
-          📎 相关新闻链接（折叠在总结下方）
+          📎 相关新闻链接
         """
         if not news_by_industry:
             logger.warning("没有新闻可发送")
             return False
 
+        funding_by_industry = funding_by_industry or {}
         today = datetime.now().strftime("%Y年%m月%d日")
         total_count = sum(len(items) for items in news_by_industry.values())
         industry_count = len(news_by_industry)
+        funding_total = sum(len(v) for v in funding_by_industry.values())
 
         elements = []
 
         # ── 头部 ──
+        header_text = (
+            f"📡 今日覆盖 **{industry_count}** 个行业，"
+            f"共捕获 **{total_count}** 条新闻"
+        )
+        if funding_total > 0:
+            header_text += f"，**{funding_total}** 条投融资/IPO 事件"
+        header_text += "\n以下为各行业动态要点总结，可直接阅读；如需详情请点击新闻链接 👇"
+
         elements.append({
             "tag": "div",
             "text": {
                 "tag": "lark_md",
-                "content": (
-                    f"📡 今日覆盖 **{industry_count}** 个行业，"
-                    f"共捕获 **{total_count}** 条新闻\n"
-                    f"以下为各行业动态要点总结，可直接阅读；如需详情请点击新闻链接 👇"
-                ),
+                "content": header_text,
             },
         })
         elements.append({"tag": "hr"})
 
-        # ── 逐行业：总结 + 链接 ──
+        # ── 逐行业：投融资高亮 + 总结 + 链接 ──
         for industry, news_items in news_by_industry.items():
             emoji = INDUSTRIES.get(industry, {}).get("emoji", "📰")
             summary_text = summaries.get(industry, "")
+            funding_events = funding_by_industry.get(industry, [])
 
-            # 行业标题
+            # 行业标题（有投融资事件时加🔥标记）
+            title_suffix = " 🔥" if funding_events else ""
             elements.append({
                 "tag": "div",
                 "text": {
                     "tag": "lark_md",
-                    "content": f"**{emoji} {industry}**",
+                    "content": f"**{emoji} {industry}{title_suffix}**",
                 },
             })
+
+            # 投融资/IPO 高亮区域（置顶）
+            if funding_events:
+                funding_lines = []
+                for evt in funding_events:
+                    line = f"🔥 **{evt.company}**"
+                    if evt.event_type == "IPO":
+                        line += " IPO"
+                    elif evt.round:
+                        line += f" 完成{evt.round}"
+                    if evt.amount:
+                        line += f"（{evt.amount}）"
+                    if evt.url:
+                        line += f" [详情]({evt.url})"
+                    funding_lines.append(line)
+
+                elements.append({
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": "\n".join(funding_lines),
+                    },
+                })
 
             # 动态总结
             if summary_text:
@@ -202,6 +235,7 @@ class FeishuNotifier:
         self,
         news_by_industry: dict[str, list[NewsItem]],
         summaries: dict[str, str],
+        funding_by_industry: dict = None,
     ) -> bool:
         """
         智能发送：内容过多时自动分批，每批最多 4 个行业
@@ -210,22 +244,26 @@ class FeishuNotifier:
             logger.warning("没有新闻可发送")
             return False
 
+        funding_by_industry = funding_by_industry or {}
         industries = list(news_by_industry.keys())
         batch_size = 4  # 飞书卡片有大小限制，每批 4 个行业比较安全
 
         if len(industries) <= batch_size:
-            return self.send_news_card_with_summary(news_by_industry, summaries)
+            return self.send_news_card_with_summary(
+                news_by_industry, summaries, funding_by_industry
+            )
 
         # 分批
         all_success = True
         for i in range(0, len(industries), batch_size):
             batch_keys = industries[i : i + batch_size]
             batch_news = {k: news_by_industry[k] for k in batch_keys}
+            batch_funding = {k: funding_by_industry[k] for k in batch_keys if k in funding_by_industry}
             batch_num = i // batch_size + 1
             total_batches = (len(industries) + batch_size - 1) // batch_size
 
             logger.info(f"正在发送第 {batch_num}/{total_batches} 批（{', '.join(batch_keys)}）")
-            success = self.send_news_card_with_summary(batch_news, summaries)
+            success = self.send_news_card_with_summary(batch_news, summaries, batch_funding)
 
             if not success:
                 all_success = False
@@ -255,15 +293,19 @@ class FeishuNotifier:
         self,
         news_by_industry: dict[str, list[NewsItem]],
         summaries: dict[str, str] = None,
+        funding_by_industry: dict = None,
     ) -> bool:
         """
         统一发送入口
         Args:
             news_by_industry: {行业名: [NewsItem, ...]}
             summaries: {行业名: "总结文本"}  可选
+            funding_by_industry: {行业名: [FundingEvent, ...]}  可选
         """
         if summaries:
-            return self.send_news_with_summary(news_by_industry, summaries)
+            return self.send_news_with_summary(
+                news_by_industry, summaries, funding_by_industry
+            )
         else:
             return self.send_news_card(news_by_industry)
 
@@ -271,14 +313,19 @@ class FeishuNotifier:
 def send_to_feishu(
     news_by_industry: dict[str, list[NewsItem]],
     summaries: dict[str, str] = None,
+    funding_by_industry: dict = None,
     webhook_url: str = None,
 ) -> bool:
     """
-    便捷函数：发送新闻到飞书
+    便捷函数：发送新闻到飞书（含投融资高亮）
     """
     try:
         notifier = FeishuNotifier(webhook_url=webhook_url)
-        return notifier.send_news(news_by_industry, summaries=summaries)
+        return notifier.send_news(
+            news_by_industry,
+            summaries=summaries,
+            funding_by_industry=funding_by_industry,
+        )
     except ValueError as e:
         logger.error(str(e))
         return False

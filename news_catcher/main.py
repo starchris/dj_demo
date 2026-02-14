@@ -32,6 +32,7 @@ from .config import (
     INDUSTRIES,
 )
 from .feishu_notifier import FeishuNotifier, send_to_feishu
+from .funding_fetcher import FundingEvent, fetch_funding_events
 from .news_fetcher import NewsFetcher, fetch_news
 from .summarizer import generate_summaries
 
@@ -84,7 +85,7 @@ def run_news_job(test_mode: bool = False) -> bool:
 
     try:
         # ── Step 1: 抓取新闻 ──
-        logger.info("\n📡 Step 1/3: 抓取行业新闻...")
+        logger.info("\n📡 Step 1/4: 抓取行业新闻...")
         news_by_industry = fetch_news()
 
         if not news_by_industry:
@@ -99,9 +100,23 @@ def run_news_job(test_mode: bool = False) -> bool:
         logger.info(f"  ────────────────")
         logger.info(f"  📰 总计: {total_count} 条")
 
-        # ── Step 2: 生成行业动态总结 ──
-        logger.info("\n🧠 Step 2/3: 生成行业动态总结...")
-        summaries = generate_summaries(news_by_industry)
+        # ── Step 2: 抓取投融资/IPO 事件 ──
+        logger.info("\n💰 Step 2/4: 抓取投融资/IPO 事件...")
+        funding_by_industry: dict[str, list[FundingEvent]] = {}
+        try:
+            funding_by_industry = fetch_funding_events()
+            funding_total = sum(len(v) for v in funding_by_industry.values())
+            logger.info(f"  💰 投融资事件: {funding_total} 条（覆盖 {len(funding_by_industry)} 个行业）")
+            for industry, events in funding_by_industry.items():
+                emoji = INDUSTRIES.get(industry, {}).get("emoji", "📰")
+                for evt in events:
+                    logger.info(f"    {emoji} {evt.highlight_text()}")
+        except Exception as e:
+            logger.error(f"投融资抓取失败（不影响主流程）: {e}")
+
+        # ── Step 3: 生成行业动态总结 ──
+        logger.info("\n🧠 Step 3/4: 生成行业动态总结...")
+        summaries = generate_summaries(news_by_industry, funding_by_industry)
 
         logger.info(f"\n📝 总结生成完成，共 {len(summaries)} 个行业：")
         for industry, summary in summaries.items():
@@ -114,9 +129,9 @@ def run_news_job(test_mode: bool = False) -> bool:
             logger.info(f"  {emoji} {industry}: {preview}")
 
         # 保存到本地（备份，含总结）
-        save_news_to_file(news_by_industry, summaries)
+        save_news_to_file(news_by_industry, summaries, funding_by_industry)
 
-        # ── Step 3: 发送到飞书 ──
+        # ── Step 4: 发送到飞书 ──
         if test_mode:
             logger.info("\n🧪 测试模式：跳过飞书发送")
             logger.info("\n" + "─" * 50)
@@ -124,15 +139,26 @@ def run_news_job(test_mode: bool = False) -> bool:
             logger.info("─" * 50)
             for industry, summary in summaries.items():
                 emoji = INDUSTRIES.get(industry, {}).get("emoji", "📰")
-                logger.info(f"\n{emoji} 【{industry}】")
+                funding_events = funding_by_industry.get(industry, [])
+                marker = " 🔥" if funding_events else ""
+                logger.info(f"\n{emoji} 【{industry}】{marker}")
                 for line in summary.strip().split("\n"):
                     logger.info(f"  {line}")
+                # 显示投融资详情链接（总结中不含链接）
+                if funding_events:
+                    logger.info(f"  💰 投融资详情:")
+                    for evt in funding_events:
+                        logger.info(f"    {evt.highlight_text()} → {evt.url}")
                 logger.info(f"  （{len(news_by_industry.get(industry, []))} 条相关新闻）")
             logger.info("─" * 50)
             return True
         else:
-            logger.info("\n📤 Step 3/3: 发送到飞书...")
-            success = send_to_feishu(news_by_industry, summaries=summaries)
+            logger.info("\n📤 Step 4/4: 发送到飞书...")
+            success = send_to_feishu(
+                news_by_industry,
+                summaries=summaries,
+                funding_by_industry=funding_by_industry,
+            )
 
             if success:
                 logger.info("✅ 行业动态速览已成功发送到飞书！")
@@ -148,8 +174,12 @@ def run_news_job(test_mode: bool = False) -> bool:
         logger.info("任务执行完毕\n")
 
 
-def save_news_to_file(news_by_industry: dict, summaries: dict[str, str] = None) -> None:
-    """保存新闻和总结到本地 JSON（备份）"""
+def save_news_to_file(
+    news_by_industry: dict,
+    summaries: dict[str, str] = None,
+    funding_by_industry: dict = None,
+) -> None:
+    """保存新闻、总结和投融资事件到本地 JSON（备份）"""
     global logger
     if logger is None:
         logger = setup_logging()
@@ -163,10 +193,16 @@ def save_news_to_file(news_by_industry: dict, summaries: dict[str, str] = None) 
 
         serializable = {}
         for industry, items in news_by_industry.items():
-            serializable[industry] = {
+            industry_data = {
                 "summary": summaries.get(industry, "") if summaries else "",
                 "news": [item.to_dict() for item in items],
             }
+            # 附加投融资事件
+            if funding_by_industry and industry in funding_by_industry:
+                industry_data["funding_events"] = [
+                    evt.to_dict() for evt in funding_by_industry[industry]
+                ]
+            serializable[industry] = industry_data
 
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(serializable, f, ensure_ascii=False, indent=2)
