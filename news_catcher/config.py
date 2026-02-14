@@ -94,12 +94,12 @@ DEFAULT_HEADERS = {
 }
 
 # RSS 新闻源列表
+# 注意：rsshub.app 公共实例不稳定，优先使用官方 RSS 源
 RSS_FEEDS = {
-    "财新网": "https://rsshub.app/caixin/latest",
-    "36氪": "https://rsshub.app/36kr/newsflashes",
-    "虎嗅": "https://rsshub.app/huxiu/tag/0",
-    "澎湃新闻": "https://rsshub.app/thepaper/newsDetail_channel/25950",
-    "科技日报": "https://rsshub.app/stdaily/02",
+    "36氪": "https://36kr.com/feed",
+    "IT之家": "https://www.ithome.com/rss/",
+    "cnBeta": "https://www.cnbeta.com.tw/backend.php",
+    "少数派": "https://sspai.com/feed",
 }
 
 # ============================================================
