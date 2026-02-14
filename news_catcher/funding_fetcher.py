@@ -243,18 +243,24 @@ class FundingFetcher:
         round_info = ""
         amount = ""
 
-        # 提取公司名：通常在「」或标题开头到"完成/获"之间
+        # 提取公司名：通常在「」或标题中"完成/获"之前
         # 模式1: 「公司名」
         m = re.search(r'[「"](.*?)[」"]', title)
         if m:
             company = m.group(1)
         else:
-            # 模式2: 标题开头到 "完成" / "获" / "宣布"
-            m = re.match(r'^(.{2,15}?)(?:完成|获得|获|宣布|拟)', title)
+            # 模式2: 逗号后 "XXX完成" / "XXX获" (如 "聚焦XXX，箭元科技完成B轮融资")
+            m = re.search(r'[，,]\s*(.{2,15}?)(?:完成|获得|获|宣布|拟)', title)
             if m:
                 company = m.group(1).strip()
-                # 去掉可能的修饰词
-                company = re.sub(r'^(总额.*?[，,])', '', company).strip()
+            else:
+                # 模式3: 标题开头到 "完成" / "获" / "宣布"
+                m = re.match(r'^(.{2,15}?)(?:完成|获得|获|宣布|拟)', title)
+                if m:
+                    company = m.group(1).strip()
+            # 去掉可能的修饰词
+            if company:
+                company = re.sub(r'^(总额.*?[，,]|半年.*?[，,])', '', company).strip()
 
         # 提取轮次
         round_patterns = [

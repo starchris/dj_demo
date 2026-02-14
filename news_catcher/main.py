@@ -139,13 +139,16 @@ def run_news_job(test_mode: bool = False) -> bool:
             logger.info("─" * 50)
             for industry, summary in summaries.items():
                 emoji = INDUSTRIES.get(industry, {}).get("emoji", "📰")
-                logger.info(f"\n{emoji} 【{industry}】")
-                # 显示投融资高亮
-                if industry in funding_by_industry:
-                    for evt in funding_by_industry[industry]:
-                        logger.info(f"  🔥 {evt.highlight_text()}")
+                funding_events = funding_by_industry.get(industry, [])
+                marker = " 🔥" if funding_events else ""
+                logger.info(f"\n{emoji} 【{industry}】{marker}")
                 for line in summary.strip().split("\n"):
                     logger.info(f"  {line}")
+                # 显示投融资详情链接（总结中不含链接）
+                if funding_events:
+                    logger.info(f"  💰 投融资详情:")
+                    for evt in funding_events:
+                        logger.info(f"    {evt.highlight_text()} → {evt.url}")
                 logger.info(f"  （{len(news_by_industry.get(industry, []))} 条相关新闻）")
             logger.info("─" * 50)
             return True
