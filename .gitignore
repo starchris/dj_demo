@@ -4,4 +4,6 @@ __pycache__/
 *.pyc
 news_catcher/data/
 news_catcher/logs/
+biz_intel_agent/data/
+biz_intel_agent/logs/
 .env
