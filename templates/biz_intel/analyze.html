@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>企业经营洞察与招聘预算分析</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+            padding: 48px;
+            max-width: 600px;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 36px;
+        }
+
+        .header .icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            color: #1a1a2e;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 12px;
+        }
+
+        .form-group input[type="text"] {
+            flex: 1;
+            padding: 14px 18px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s, box-shadow 0.3s;
+            outline: none;
+        }
+
+        .form-group input[type="text"]:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102,126,234,0.15);
+        }
+
+        .form-group input[type="text"]::placeholder {
+            color: #aaa;
+        }
+
+        .btn {
+            padding: 14px 28px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(102,126,234,0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* 分析维度说明 */
+        .features {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .feature-item {
+            background: #f8f9ff;
+            border-radius: 10px;
+            padding: 14px;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .feature-item .emoji {
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        .feature-item .text {
+            font-size: 13px;
+            color: #555;
+            line-height: 1.5;
+        }
+
+        .feature-item .text strong {
+            display: block;
+            color: #333;
+            font-size: 14px;
+            margin-bottom: 2px;
+        }
+
+        /* 状态区域 */
+        .status {
+            margin-top: 24px;
+            padding: 16px;
+            border-radius: 10px;
+            font-size: 14px;
+            line-height: 1.6;
+            display: none;
+        }
+
+        .status.loading {
+            display: block;
+            background: #fff8e1;
+            border: 1px solid #ffe082;
+            color: #f57f17;
+        }
+
+        .status.success {
+            display: block;
+            background: #e8f5e9;
+            border: 1px solid #a5d6a7;
+            color: #2e7d32;
+        }
+
+        .status.error {
+            display: block;
+            background: #ffebee;
+            border: 1px solid #ef9a9a;
+            color: #c62828;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid #f57f17;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            vertical-align: middle;
+            margin-right: 6px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 28px;
+            color: #999;
+            font-size: 12px;
+        }
+
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+
+        .examples {
+            margin-top: 16px;
+            text-align: center;
+        }
+
+        .examples span {
+            display: inline-block;
+            background: #f0f0f5;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            color: #667eea;
+            cursor: pointer;
+            margin: 4px;
+            transition: background 0.2s;
+        }
+
+        .examples span:hover {
+            background: #e0e4f5;
+        }
+
+        @media (max-width: 480px) {
+            .container { padding: 28px 20px; }
+            .features { grid-template-columns: 1fr; }
+            .input-wrapper { flex-direction: column; }
+            .btn { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="icon">📊</div>
+            <h1>企业经营洞察与招聘预算分析</h1>
+            <p>输入客户名称，自动分析企业经营信息和招聘预算<br>分析报告将推送到飞书群</p>
+        </div>
+
+        <div class="features">
+            <div class="feature-item">
+                <span class="emoji">💰</span>
+                <div class="text">
+                    <strong>财务实力</strong>
+                    营收、利润、融资轮次
+                </div>
+            </div>
+            <div class="feature-item">
+                <span class="emoji">📈</span>
+                <div class="text">
+                    <strong>业务发展</strong>
+                    核心业务、战略方向
+                </div>
+            </div>
+            <div class="feature-item">
+                <span class="emoji">👥</span>
+                <div class="text">
+                    <strong>招聘预算</strong>
+                    职位数量、薪资水平
+                </div>
+            </div>
+            <div class="feature-item">
+                <span class="emoji">🎯</span>
+                <div class="text">
+                    <strong>销售策略</strong>
+                    接触点、价值主张
+                </div>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="company">公司名称</label>
+            <div class="input-wrapper">
+                <input type="text" id="company" name="company"
+                       placeholder="请输入公司名称，如：腾讯、字节跳动"
+                       value="{{ company }}" autocomplete="off">
+                <button class="btn" id="submitBtn" onclick="submitAnalysis()">
+                    开始分析
+                </button>
+            </div>
+        </div>
+
+        <div class="examples">
+            <span onclick="fillCompany('腾讯')">腾讯</span>
+            <span onclick="fillCompany('字节跳动')">字节跳动</span>
+            <span onclick="fillCompany('宁德时代')">宁德时代</span>
+            <span onclick="fillCompany('华为')">华为</span>
+            <span onclick="fillCompany('比亚迪')">比亚迪</span>
+        </div>
+
+        <div class="status" id="status"></div>
+
+        <div class="footer">
+            企业经营洞察与招聘预算分析 Agent · 基于 LLM 智能分析
+        </div>
+    </div>
+
+    <script>
+        // 点击示例公司名称，自动填充到输入框
+        function fillCompany(name) {
+            document.getElementById('company').value = name;
+            document.getElementById('company').focus();
+        }
+
+        // 提交分析请求
+        function submitAnalysis() {
+            var company = document.getElementById('company').value.trim();
+            if (!company) {
+                showStatus('error', '请输入公司名称');
+                return;
+            }
+
+            var btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            btn.textContent = '分析中...';
+
+            showStatus('loading',
+                '<span class="spinner"></span>' +
+                '正在分析「' + company + '」的企业经营信息和招聘预算...<br>' +
+                '分析结果将推送到飞书群，预计需要 30-60 秒'
+            );
+
+            // 发送 POST 请求
+            fetch('/analyze', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'company=' + encodeURIComponent(company),
+            })
+            .then(function(response) { return response.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    showStatus('success',
+                        '✅ 已开始分析「' + company + '」<br>' +
+                        '分析报告将在 30-60 秒后推送到飞书群，请留意飞书消息。'
+                    );
+                } else {
+                    showStatus('error', '❌ ' + (data.message || '提交失败'));
+                }
+            })
+            .catch(function(error) {
+                showStatus('error', '❌ 请求失败: ' + error.message);
+            })
+            .finally(function() {
+                btn.disabled = false;
+                btn.textContent = '开始分析';
+            });
+        }
+
+        // 显示状态信息
+        function showStatus(type, message) {
+            var statusEl = document.getElementById('status');
+            statusEl.className = 'status ' + type;
+            statusEl.innerHTML = message;
+        }
+
+        // 回车键提交
+        document.getElementById('company').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                submitAnalysis();
+            }
+        });
+
+        // 如果 URL 中已有 company 参数，自动聚焦
+        var input = document.getElementById('company');
+        if (input.value) {
+            input.focus();
+        }
+    </script>
+</body>
+</html>
