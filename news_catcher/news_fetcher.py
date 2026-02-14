@@ -103,37 +103,43 @@ class NewsFetcher:
         return all_news
 
     def _fetch_industry_news(self, industry: str, keywords: list[str]) -> list[NewsItem]:
-        """抓取单个行业的新闻"""
+        """
+        抓取单个行业的新闻
+        优先级：搜狗（时效性最好）> 百度 > Bing
+        所有源都会尝试，最后统一去重+过滤过期新闻
+        """
         news_items: list[NewsItem] = []
 
-        # 方法1：百度新闻搜索
-        for keyword in keywords[:3]:  # 每个行业最多使用前3个关键词搜索
+        # 方法1：搜狗新闻搜索（时效性最好，优先使用）
+        try:
+            primary_keyword = keywords[0]
+            items = self._fetch_from_sogou_news(primary_keyword, industry)
+            news_items.extend(items)
+            logger.debug(f"  搜狗新闻获取到 {len(items)} 条")
+        except Exception as e:
+            logger.error(f"搜狗新闻抓取失败 [{keywords[0]}]: {e}")
+        time.sleep(1)
+
+        # 方法2：百度新闻搜索
+        for keyword in keywords[:2]:  # 每个行业最多使用前2个关键词
             try:
                 items = self._fetch_from_baidu_news(keyword, industry)
                 news_items.extend(items)
+                logger.debug(f"  百度新闻[{keyword}]获取到 {len(items)} 条")
             except Exception as e:
                 logger.error(f"百度新闻抓取失败 [{keyword}]: {e}")
             time.sleep(1)
 
-        # 方法2：Bing 新闻搜索（作为补充）
-        if len(news_items) < MAX_NEWS_PER_INDUSTRY:
-            try:
-                primary_keyword = keywords[0]
-                items = self._fetch_from_bing_news(primary_keyword, industry)
-                news_items.extend(items)
-            except Exception as e:
-                logger.error(f"Bing新闻抓取失败 [{keywords[0]}]: {e}")
+        # 方法3：Bing 新闻搜索（补充国际视角）
+        try:
+            primary_keyword = keywords[0]
+            items = self._fetch_from_bing_news(primary_keyword, industry)
+            news_items.extend(items)
+            logger.debug(f"  Bing新闻获取到 {len(items)} 条")
+        except Exception as e:
+            logger.error(f"Bing新闻抓取失败 [{keywords[0]}]: {e}")
 
-        # 方法3：搜狗新闻搜索（进一步补充）
-        if len(news_items) < MAX_NEWS_PER_INDUSTRY:
-            try:
-                primary_keyword = keywords[0]
-                items = self._fetch_from_sogou_news(primary_keyword, industry)
-                news_items.extend(items)
-            except Exception as e:
-                logger.error(f"搜狗新闻抓取失败 [{keywords[0]}]: {e}")
-
-        # 去重
+        # 去重 + 过滤过期新闻
         unique_news = self._deduplicate(news_items)
         return unique_news
 
@@ -490,14 +496,14 @@ class NewsFetcher:
                 except ValueError:
                     pass
 
-            # "X天前" - 如果超过阈值则过期
-            match = re.search(r'(\d+)\s*天前', text)
+            # "X天前" 或 "X 天" - 如果超过阈值则过期
+            match = re.search(r'(\d+)\s*天', text)
             if match:
                 days_ago = int(match.group(1))
                 if days_ago > NEWS_MAX_AGE_DAYS:
                     return True
 
-            # "X个月前" - 一定过期
+            # "X个月前" 或 "X 个月" - 一定过期
             if re.search(r'\d+\s*个月', text):
                 return True
 
