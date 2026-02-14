@@ -292,33 +292,190 @@ class FeishuWebhookSender:
     # ================================================================
 
     @staticmethod
+    def _md_to_lark_md(text: str) -> str:
+        """
+        将标准 Markdown 转换为飞书 lark_md 兼容格式
+
+        飞书 lark_md 支持: **粗体**, *斜体*, ~~删除线~~, [链接](url), 换行
+        飞书 lark_md 不支持: # 标题, | 表格, > 引用块, ``` 代码块, 有序列表编号
+
+        转换规则:
+          - # / ## / ### 标题 → **粗体标题**
+          - | 表格 → 逐行 key: value 文本
+          - > 引用 → 💡 + 斜体
+          - - 列表 → • 圆点
+          - ``` 代码块 → 去掉围栏，保留内容
+          - ⚠️/> ⚠️ 警告块 → 保留 emoji 文本
+        """
+        lines = text.split('\n')
+        result = []
+        in_table = False
+        table_headers = []
+        table_rows = []
+        in_code_block = False
+
+        for line in lines:
+            stripped = line.strip()
+
+            # ── 代码块处理（去掉 ``` 围栏，保留内容） ──
+            if stripped.startswith('```'):
+                in_code_block = not in_code_block
+                continue
+            if in_code_block:
+                result.append(line)
+                continue
+
+            # ── 表格处理：收集表格行，最后统一转换 ──
+            if stripped.startswith('|') and stripped.endswith('|'):
+                cols = [c.strip() for c in stripped.strip('|').split('|')]
+                # 跳过分隔行（|---|---|）
+                if all(re.match(r'^[-:]+$', c) for c in cols):
+                    in_table = True
+                    continue
+                if not in_table:
+                    # 第一行是表头
+                    table_headers = cols
+                    in_table = True
+                    continue
+                else:
+                    table_rows.append(cols)
+                    continue
+            else:
+                # 如果刚从表格切出来，先输出已收集的表格
+                if in_table:
+                    result.append(FeishuWebhookSender._format_table(table_headers, table_rows))
+                    table_headers = []
+                    table_rows = []
+                    in_table = False
+
+            # ── 空行 ──
+            if not stripped:
+                result.append('')
+                continue
+
+            # ── 标题 → 粗体 ──
+            heading_match = re.match(r'^(#{1,4})\s+(.+)$', stripped)
+            if heading_match:
+                level = len(heading_match.group(1))
+                title_text = heading_match.group(2)
+                if level == 1:
+                    # 一级标题：已在卡片 header 中，跳过
+                    continue
+                elif level == 2:
+                    result.append(f'\n**━━ {title_text} ━━**')
+                elif level == 3:
+                    result.append(f'\n**▸ {title_text}**')
+                else:
+                    result.append(f'**{title_text}**')
+                continue
+
+            # ── 引用块 → 斜体带 emoji ──
+            if stripped.startswith('> '):
+                quote_text = stripped[2:]
+                # 如果引用中已有 emoji（如 ⚠️），保留原样
+                if any(c in quote_text[:3] for c in '⚠️💡📌🔔'):
+                    result.append(f'*{quote_text}*')
+                else:
+                    result.append(f'💡 *{quote_text}*')
+                continue
+
+            # ── 无序列表 → 圆点 ──
+            list_match = re.match(r'^[-*]\s+(.+)$', stripped)
+            if list_match:
+                result.append(f'  • {list_match.group(1)}')
+                continue
+
+            # ── 有序列表 → 保留数字 ──
+            olist_match = re.match(r'^(\d+)\.\s+(.+)$', stripped)
+            if olist_match:
+                result.append(f'  {olist_match.group(1)}. {olist_match.group(2)}')
+                continue
+
+            # ── 分隔线 ──
+            if stripped == '---' or stripped == '***':
+                result.append('─────────────────────')
+                continue
+
+            # ── 普通文本保留原样 ──
+            result.append(stripped)
+
+        # 如果文件末尾有未输出的表格
+        if in_table:
+            result.append(FeishuWebhookSender._format_table(table_headers, table_rows))
+
+        return '\n'.join(result)
+
+    @staticmethod
+    def _format_table(headers: list, rows: list) -> str:
+        """
+        将 Markdown 表格转换为 lark_md 兼容的 key-value 文本
+
+        两列表格 → "**key**: value" 格式（更紧凑）
+        多列表格 → 表头作为 key，每行一组数据
+        """
+        if not headers:
+            return ''
+
+        lines = []
+
+        if len(headers) == 2:
+            # 两列表格：key-value 模式，更紧凑
+            for row in rows:
+                if len(row) >= 2:
+                    key = row[0].strip('*').strip()
+                    val = row[1].strip()
+                    lines.append(f'  **{key}**：{val}')
+                elif len(row) == 1:
+                    lines.append(f'  {row[0]}')
+        else:
+            # 多列表格：每行展示所有字段
+            for row in rows:
+                parts = []
+                for i, col in enumerate(row):
+                    if i < len(headers) and col.strip():
+                        parts.append(f'{headers[i]}: {col.strip()}')
+                if parts:
+                    lines.append('  ' + ' | '.join(parts))
+
+        return '\n'.join(lines)
+
+    @staticmethod
     def _split_report_to_sections(report: str) -> list:
         """
-        将报告按二级标题（##）拆分为多个段落
+        将报告按二级标题（##）拆分为多个段落，并转换为 lark_md 格式
 
         飞书卡片的单个 lark_md 元素有字符限制（约4000字符），
         按段拆分可以规避限制，同时改善阅读体验。
         """
-        # 按 ## 标题拆分
-        sections = re.split(r'\n(?=## )', report)
+        # 先转换整个报告为 lark_md 格式
+        converted = FeishuWebhookSender._md_to_lark_md(report)
+
+        # 按粗体标题（━━ xxx ━━）拆分段落
+        sections = re.split(r'\n(?=\n\*\*━━ )', converted)
 
         result = []
         for section in sections:
             section = section.strip()
             if not section:
                 continue
-
-            # 去掉最顶部的一级标题（# xxx），因为已在卡片 header 中显示
-            if section.startswith("# ") and "\n" in section:
-                first_line_end = section.index("\n")
-                section = section[first_line_end:].strip()
-            elif section.startswith("# ") and "\n" not in section:
-                continue
-
-            if section:
+            # 飞书单个元素限制约4000字符，超长则截断
+            if len(section) > 3800:
+                # 按换行找到合适的截断点
+                chunks = []
+                current = ''
+                for line in section.split('\n'):
+                    if len(current) + len(line) + 1 > 3800:
+                        chunks.append(current)
+                        current = line
+                    else:
+                        current = current + '\n' + line if current else line
+                if current:
+                    chunks.append(current)
+                result.extend(chunks)
+            else:
                 result.append(section)
 
-        return result if result else [report]
+        return result if result else [converted]
 
 
 # ================================================================
